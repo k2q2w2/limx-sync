@@ -2,7 +2,7 @@ from legged_gym.envs.base.base_config import BaseConfig
 
 class PointFootRoughCfg(BaseConfig):
     class env:
-        num_envs = 8192
+        num_envs = 8
         num_propriceptive_obs = 27
         num_privileged_obs = 148  # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
         num_actions = 6
@@ -97,13 +97,13 @@ class PointFootRoughCfg(BaseConfig):
     class asset:
         import os
         import sys
-        robot_type = os.getenv("ROBOT_TYPE")
+        robot_type = "PF_TRON1A"
 
         # Check if the ROBOT_TYPE environment variable is set, otherwise exit with an error
         if not robot_type:
             print("Error: Please set the ROBOT_TYPE using 'export ROBOT_TYPE=<robot_type>'.")
             sys.exit(1)
-        file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/pointfoot/' + robot_type + '/urdf/robot.urdf'
+        file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/' + robot_type + '/urdf/robot.urdf'
         name = robot_type
         foot_name = 'foot'
         terminate_after_contacts_on = ["abad", "base"]
@@ -235,13 +235,13 @@ class PointFootRoughCfgPPO(BaseConfig):
         gamma = 0.99
         lam = 0.95
         desired_kl = 0.01
-        max_grad_norm = 1.
+        max_grad_norm = 0.01
 
     class runner:
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
         num_steps_per_env = 24  # per iteration
-        max_iterations = 100000  # number of policy updates
+        max_iterations = 10000  # number of policy updates
 
         # logging
         save_interval = 1000  # check for potential saves every this many iterations
