@@ -1197,4 +1197,4 @@ class PointFoot:
     # 4. flat orientation
     def _reward_orientation(self):
         # Penalize non flat base orientation
-        return torch.sum(torch.square(self.projected_gravity[:,:2],dim=1)*torch.clamp(-self.projected_gravity[:,:2],0,1))
+        return torch.sum(torch.square(self.projected_gravity[:,:2]),dim=1)

@@ -2,7 +2,7 @@ from legged_gym.envs.base.base_config import BaseConfig
 
 class PointFootRoughCfg(BaseConfig):
     class env:
-        num_envs = 8
+        num_envs = 4096
         num_propriceptive_obs = 27
         num_privileged_obs = 148  # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
         num_actions = 6
@@ -126,7 +126,7 @@ class PointFootRoughCfg(BaseConfig):
 
     class domain_rand:
         randomize_friction = True
-        friction_range = [0.0, 1.6]
+        friction_range = [0.25, 1.6]
         randomize_base_mass = True
         added_mass_range = [-1., 2.]
         randomize_base_com = True
@@ -147,6 +147,10 @@ class PointFootRoughCfg(BaseConfig):
             torques = -2.5e-05
             feet_distance = -100
             survival = 1
+            tracking_lin_vel =2.0
+            tracking_ang_vel =0.5
+            base_height=-0.25
+            orientation =1.0
 
         base_height_target = 0.62
         soft_dof_pos_limit = 0.95  # percentage of urdf limits, values above this limit are penalized
