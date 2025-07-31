@@ -30,12 +30,12 @@
 
 import os
 import copy
-import torch
+
 import numpy as np
 import random
 from isaacgym import gymapi
 from isaacgym import gymutil
-
+import torch
 from legged_gym import LEGGED_GYM_ROOT_DIR, LEGGED_GYM_ENVS_DIR
 
 def class_to_dict(obj) -> dict:
@@ -164,6 +164,7 @@ def get_args():
         {"name": "--num_envs", "type": int, "help": "Number of environments to create. Overrides config file if provided."},
         {"name": "--seed", "type": int, "help": "Random seed. Overrides config file if provided."},
         {"name": "--max_iterations", "type": int, "help": "Maximum number of training iterations. Overrides config file if provided."},
+        {"name": "--video", "action": "store_true", "default": False,"help": "start vedio recording"},        
     ]
     # parse arguments
     args = gymutil.parse_arguments(

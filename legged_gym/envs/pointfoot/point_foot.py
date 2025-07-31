@@ -10,9 +10,9 @@ from legged_gym import LEGGED_GYM_ROOT_DIR
 from legged_gym.utils.helpers import class_to_dict
 from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi
 from legged_gym.utils.terrain import Terrain
+from legged_gym.envs.base.legged_robot import LeggedRobot
 
-
-class PointFoot:
+class PointFoot(LeggedRobot):
     def __init__(self, cfg, sim_params, physics_engine, sim_device, headless):
         """ Parses the provided config file,
             calls create_sim() (which creates, simulation, terrain and environments),
@@ -48,7 +48,8 @@ class PointFoot:
 
         # graphics device for rendering, -1 for no rendering
         self.graphics_device_id = self.sim_device_id
-
+        self.obs_history = None
+        self.obs_history_length = 0
         self.num_envs = cfg.env.num_envs
         self.num_obs = cfg.env.num_propriceptive_obs
         self.num_privileged_obs = cfg.env.num_privileged_obs
@@ -1198,3 +1199,6 @@ class PointFoot:
     def _reward_orientation(self):
         # Penalize non flat base orientation
         return torch.sum(torch.square(self.projected_gravity[:,:2]),dim=1)
+    
+    def video_load(self):
+        pass
