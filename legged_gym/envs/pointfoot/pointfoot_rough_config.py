@@ -145,12 +145,12 @@ class PointFootRoughCfg(BaseConfig):
             feet_air_time = 0.0
             torque_limits = -0.1
             torques = -2.5e-05
-            feet_distance = -100
-            survival = 1
-            tracking_lin_vel =3.0
-            tracking_ang_vel =1.5
+            feet_distance = -65
+            survival = 2.0
+            tracking_lin_vel =4.0
+            tracking_ang_vel =2.0
             base_height=-0.25
-            orientation =3.0
+            orientation =4.0
 
         base_height_target = 0.62
         soft_dof_pos_limit = 0.95  # percentage of urdf limits, values above this limit are penalized
