@@ -2,7 +2,7 @@ from legged_gym.envs.base.base_config import BaseConfig
 
 class PointFootRoughCfg(BaseConfig):
     class env:
-        num_envs = 4096
+        num_envs = 2
         num_propriceptive_obs = 27
         num_privileged_obs = 148  # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
         num_actions = 6
@@ -253,7 +253,7 @@ class PointFootRoughCfgPPO(BaseConfig):
         experiment_name = 'pointfoot_rough'
         run_name = ''
         # load and resume
-        resume = False
-        load_run = -1  # -1 = last run
+        resume = True
+        load_run = "models"  # -1 = last run
         checkpoint = -1  # -1 = last saved model
-        resume_path = None  # updated from load_run and chkpt
+        resume_path = "model_4000.pt"  # updated from load_run and chkpt
