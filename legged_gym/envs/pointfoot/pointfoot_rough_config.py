@@ -256,7 +256,7 @@ class PointFootRoughCfgPPO(BaseConfig):
         experiment_name = 'pointfoot_rough'
         run_name = ''
         # load and resume
-        resume = True
+        resume = False
         load_run = "models"  # -1 = last run
         checkpoint = -1  # -1 = last saved model
         resume_path = "model_4000.pt"  # updated from load_run and chkpt
