@@ -3,7 +3,7 @@ from legged_gym.envs.base.base_config import BaseConfig
 class PointFootRoughCfg(BaseConfig):
     class env:
         num_envs = 4096*2
-        num_propriceptive_obs = 27
+        num_propriceptive_obs = 6*2+3*2+3+6+121 # 刚好是148
         num_privileged_obs = 148  # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
         num_actions = 6
         env_spacing = 3.  # not used with heightfields/trimeshes
@@ -40,7 +40,7 @@ class PointFootRoughCfg(BaseConfig):
     class commands:
         curriculum = False
         max_curriculum = 1.
-        num_commands = 4  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
+        num_commands = 7  # default: x , y ,z ,quat
         resampling_time = 10.  # time before command are changed[s]
         heading_command = True  # if true: compute ang vel command from heading error
 
@@ -49,6 +49,7 @@ class PointFootRoughCfg(BaseConfig):
             lin_vel_y = [-0.2, 0.2]  # min max [m/s]
             ang_vel_yaw = [-1, 1]  # min max [rad/s]
             heading = [-3.14, 3.14]
+            
 
     class init_state:
         pos = [0.0, 0.0, 0.62]  # x,y,z [m]
