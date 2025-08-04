@@ -71,7 +71,7 @@ class PointFoot:
             self.privileged_obs_buf = None
 
         self.extras = {}
-
+        self.body_props_tensor = torch.zeros(self.num_envs,4,dtype=torch.float, device=self.device, requires_grad=False)
         # create envs, sim and viewer
         self.create_sim()
         self.gym.prepare_sim(self.sim)
@@ -335,6 +335,12 @@ class PointFoot:
         buf = torch.cat(
             (buf, heights), dim=-1
         )
+        #todo: cat other hidden parameters
+        #print(self.kp_tensor.shape)
+        buf = torch.cat((buf,self.kp_tensor,
+                         self.kd_tensor,
+                        self.friction_coeffs_tensor,
+                        self.body_props_tensor),dim=-1)
         return buf
 
     def _compose_proprioceptive_obs_buf_no_height_measure(self):
@@ -711,6 +717,8 @@ class PointFoot:
         self.torques = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device,
                                    requires_grad=False)
         self.p_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        self.kp_tensor = torch.zeros(self.num_envs,self.num_actions,dtype=torch.float, device=self.device, requires_grad=False)
+        self.kd_tensor = torch.zeros(self.num_envs,self.num_actions,dtype=torch.float, device=self.device, requires_grad=False)
         self.d_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device,
                                    requires_grad=False)
@@ -770,6 +778,8 @@ class PointFoot:
                 if self.cfg.control.control_type in ["P", "V"]:
                     print(f"PD gain of joint {name} were not defined, setting them to zero")
         self.default_dof_pos = self.default_dof_pos.unsqueeze(0)
+        self.kp_tensor = self.p_gains.repeat(self.num_envs,1)
+        self.kd_tensor = self.d_gains.repeat(self.num_envs,1)
 
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
@@ -914,6 +924,7 @@ class PointFoot:
             start_pose.p = gymapi.Vec3(*pos)
 
             rigid_shape_props = self._process_rigid_shape_props(rigid_shape_props_asset, i)
+            self.friction_coeffs_tensor = self.friction_coeffs.to(self.device).to(torch.float).squeeze(-1)
             self.gym.set_asset_rigid_shape_properties(robot_asset, rigid_shape_props)
             actor_handle = self.gym.create_actor(env_handle, robot_asset, start_pose, self.cfg.asset.name, i,
                                                  self.cfg.asset.self_collisions, 0)
@@ -921,6 +932,7 @@ class PointFoot:
             self.gym.set_actor_dof_properties(env_handle, actor_handle, dof_props)
             body_props = self.gym.get_actor_rigid_body_properties(env_handle, actor_handle)
             body_props = self._process_rigid_body_props(body_props, i)
+            self.body_props_tensor[i,:]=torch.tensor([body_props[0].com.x,body_props[0].com.y,body_props[0].com.z,body_props[0].mass]).to(self.device).to(torch.float).squeeze(-1)
             self.gym.set_actor_rigid_body_properties(env_handle, actor_handle, body_props, recomputeInertia=True)
             self.envs.append(env_handle)
             self.actor_handles.append(actor_handle)

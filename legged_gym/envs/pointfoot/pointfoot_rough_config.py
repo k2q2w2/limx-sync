@@ -3,8 +3,9 @@ from legged_gym.envs.base.base_config import BaseConfig
 class PointFootRoughCfg(BaseConfig):
     class env:
         num_envs = 4096*2
-        num_propriceptive_obs = 6*2+3*2+3+6+121 # 刚好是148
-        num_privileged_obs = 148  # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
+        num_propriceptive_obs = 27
+        num_privileged_obs = 148+2*6+1+4  # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
+        #add p,d_gains(2*6) friction:1 mass&com:4 
         num_actions = 6
         env_spacing = 3.  # not used with heightfields/trimeshes
         send_timeouts = True  # send time out information to the algorithm
@@ -101,9 +102,9 @@ class PointFootRoughCfg(BaseConfig):
         robot_type = "PF_TRON1A"
 
         # Check if the ROBOT_TYPE environment variable is set, otherwise exit with an error
-        if not robot_type:
-            print("Error: Please set the ROBOT_TYPE using 'export ROBOT_TYPE=<robot_type>'.")
-            sys.exit(1)
+        # if not robot_type:
+        #     print("Error: Please set the ROBOT_TYPE using 'export ROBOT_TYPE=<robot_type>'.")
+        #     sys.exit(1)
         file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/' + robot_type + '/urdf/robot.urdf'
         name = robot_type
         foot_name = 'foot'
@@ -135,6 +136,7 @@ class PointFootRoughCfg(BaseConfig):
         push_robots = True
         push_interval_s = 7
         max_push_vel_xy = 1.
+        #todo:random pd
 
     class rewards:
         class scales:
@@ -146,12 +148,12 @@ class PointFootRoughCfg(BaseConfig):
             feet_air_time = 0.0
             torque_limits = -0.1
             torques = -2.5e-05
-            feet_distance = -100
-            survival = 1
-            tracking_lin_vel =3.0
-            tracking_ang_vel =1.5
+            feet_distance = -65
+            survival = 2.0
+            tracking_lin_vel =4.0
+            tracking_ang_vel =2.0
             base_height=-0.25
-            orientation =3.0
+            orientation =4.0
 
         base_height_target = 0.62
         soft_dof_pos_limit = 0.95  # percentage of urdf limits, values above this limit are penalized
