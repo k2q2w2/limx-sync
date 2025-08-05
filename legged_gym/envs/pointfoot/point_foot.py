@@ -144,6 +144,7 @@ class PointFoot:
         clip_actions = self.cfg.normalization.clip_actions
         self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
         # step physics and render each frame
+        self.pre_physics_step()
         self.render()
         for _ in range(self.cfg.control.decimation):
             self.torques = self._compute_torques(self.actions).view(self.torques.shape)
@@ -159,6 +160,12 @@ class PointFoot:
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
         return self.proprioceptive_obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras
+    
+    def pre_physics_step(self):
+        self.rwd_linVelTrackPrev = self._reward_tracking_lin_vel()
+        self.rwd_angVelTrackPrev = self._reward_tracking_ang_vel()
+        if "tracking_contacts_shaped_height" in self.reward_scales.keys():
+            self.rwd_swingHeightPrev = self._reward_tracking_contacts_shaped_height()
 
     def post_physics_step(self):
         """ check terminations, compute observations and rewards
@@ -193,6 +200,8 @@ class PointFoot:
         self.last_actions[:] = self.actions[:]
         self.last_dof_vel[:] = self.dof_vel[:]
         self.last_root_vel[:] = self.root_states[:, 7:13]
+        self.last_base_position[:] = self.base_position[:]
+        self.last_foot_positions[:] = self.foot_positions[:]
 
         if self.viewer and self.enable_viewer_sync and self.debug_viz:
             self._draw_debug_vis()
@@ -250,6 +259,8 @@ class PointFoot:
         if self.cfg.commands.curriculum:
             self.extras["episode"]["max_command_x"] = self.command_ranges["lin_vel_x"][1]
         # send timeout info to the algorithm
+        self._resample_gaits(env_ids)
+        self.gait_indices[env_ids] = 0
         if self.cfg.env.send_timeouts:
             self.extras["time_outs"] = self.time_out_buf
 
@@ -362,6 +373,9 @@ class PointFoot:
                                                  self.dof_vel * self.obs_scales.dof_vel,
                                                  self.actions,
                                                  self.commands[:, :3] * self.commands_scale,
+                                                 self.clock_inputs_sin.view(self.num_envs, 1),
+                                                 self.clock_inputs_cos.view(self.num_envs, 1),
+                                                 self.gaits,
                                                  ), dim=-1)
 
     def create_sim(self):
@@ -392,6 +406,41 @@ class PointFoot:
         cam_target = gymapi.Vec3(lookat[0], lookat[1], lookat[2])
         self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 
+    def _resample_gaits(self, env_ids):
+        if len(env_ids) == 0:
+            return
+        self.gaits[env_ids, 0] = torch_rand_float(
+            self.gaits_ranges["frequencies"][0],
+            self.gaits_ranges["frequencies"][1],
+            (len(env_ids), 1),
+            device=self.device,
+        ).squeeze(1)
+
+        self.gaits[env_ids, 1] = torch_rand_float(
+            self.gaits_ranges["offsets"][0],
+            self.gaits_ranges["offsets"][1],
+            (len(env_ids), 1),
+            device=self.device,
+        ).squeeze(1)
+        # parts = 4
+        # self.gaits[env_ids, 1] = (self.gaits[env_ids, 1] * parts).round() / parts
+        self.gaits[env_ids, 1] = 0.5
+
+        self.gaits[env_ids, 2] = torch_rand_float(
+            self.gaits_ranges["durations"][0],
+            self.gaits_ranges["durations"][1],
+            (len(env_ids), 1),
+            device=self.device,
+        ).squeeze(1)
+        # parts = 2
+        # self.gaits[env_ids, 2] = (self.gaits[env_ids, 2] * parts).round() / parts
+
+        self.gaits[env_ids, 3] = torch_rand_float(
+            self.gaits_ranges["swing_height"][0],
+            self.gaits_ranges["swing_height"][1],
+            (len(env_ids), 1),
+            device=self.device,
+        ).squeeze(1)
     # ------------- Callbacks --------------
     def _process_rigid_shape_props(self, props, env_id):
         """ Callback allowing to store/change/randomize the rigid shape properties of each environment.
@@ -469,6 +518,8 @@ class PointFoot:
         env_ids = (self.episode_length_buf % int(self.cfg.commands.resampling_time / self.dt) == 0).nonzero(
             as_tuple=False).flatten()
         self._resample(env_ids)
+        self._resample_gaits(env_ids)
+        self._step_contact_targets()
         if self.cfg.commands.heading_command:
             forward = quat_apply(self.base_quat, self.forward_vec)
             heading = torch.atan2(forward[:, 1], forward[:, 0])
@@ -503,6 +554,57 @@ class PointFoot:
 
         # set small commands to zero
         self.commands[env_ids, :2] *= (torch.norm(self.commands[env_ids, :2], dim=1) > 0.2).unsqueeze(1)
+
+    def _step_contact_targets(self):
+        frequencies = self.gaits[:, 0]
+        offsets = self.gaits[:, 1]
+        durations = torch.cat(
+            [
+                self.gaits[:, 2].view(self.num_envs, 1),
+                self.gaits[:, 2].view(self.num_envs, 1),
+            ],
+            dim=1,
+        )
+        self.gait_indices = torch.remainder(
+            self.gait_indices + self.dt * frequencies, 1.0
+        )
+
+        self.clock_inputs_sin = torch.sin(2 * np.pi * self.gait_indices)
+        self.clock_inputs_cos = torch.cos(2 * np.pi * self.gait_indices)
+        # self.doubletime_clock_inputs_sin = torch.sin(4 * np.pi * foot_indices)
+        # self.halftime_clock_inputs_sin = torch.sin(np.pi * foot_indices)
+
+        # von mises distribution
+        kappa = self.cfg.rewards.kappa_gait_probs
+        smoothing_cdf_start = torch.distributions.normal.Normal(0, kappa).cdf
+
+        foot_indices = torch.remainder(
+            torch.cat(
+                [
+                    self.gait_indices.view(self.num_envs, 1),
+                    (self.gait_indices + offsets + 1).view(self.num_envs, 1),
+                ],
+                dim=1,
+            ),
+            1.0,
+        )
+        stance_idxs = foot_indices < durations
+        swing_idxs = foot_indices > durations
+
+        # 感觉这两句可以不要
+        foot_indices[stance_idxs] = torch.remainder(foot_indices[stance_idxs], 1) * (
+                0.5 / durations[stance_idxs]
+        )
+        foot_indices[swing_idxs] = 0.5 + (
+                torch.remainder(foot_indices[swing_idxs], 1) - durations[swing_idxs]
+        ) * (0.5 / (1 - durations[swing_idxs]))
+
+        # 就是为了拟合论文中的曲线，也可以用更正常的方法
+        self.desired_contact_states = smoothing_cdf_start(foot_indices) * (
+                1 - smoothing_cdf_start(foot_indices - 0.5)
+        ) + smoothing_cdf_start(foot_indices - 1) * (
+                                              1 - smoothing_cdf_start(foot_indices - 1.5)
+                                      )
 
     def _compute_torques(self, actions):
         """ Compute torques from actions.
@@ -780,6 +882,49 @@ class PointFoot:
         self.default_dof_pos = self.default_dof_pos.unsqueeze(0)
         self.kp_tensor = self.p_gains.repeat(self.num_envs,1)
         self.kd_tensor = self.d_gains.repeat(self.num_envs,1)
+        self.gaits = torch.zeros(
+            self.num_envs,
+            self.cfg.gait.num_gait_params,
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
+        self.desired_contact_states = torch.zeros(
+            self.num_envs,
+            len(self.feet_indices),
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
+        self.gait_indices = torch.zeros(
+            self.num_envs, dtype=torch.float, device=self.device, requires_grad=False
+        )
+        self.clock_inputs_sin = torch.zeros(
+            self.num_envs,
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
+        self.clock_inputs_cos = torch.zeros(
+            self.num_envs,
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
+        self.doubletime_clock_inputs_sin = torch.zeros(
+            self.num_envs,
+            len(self.feet_indices),
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
+        self.halftime_clock_inputs_sin = torch.zeros(
+            self.num_envs,
+            len(self.feet_indices),
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
 
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
@@ -990,11 +1135,11 @@ class PointFoot:
         self.obs_scales = self.cfg.normalization.obs_scales
         self.reward_scales = class_to_dict(self.cfg.rewards.scales)
         self.command_ranges = class_to_dict(self.cfg.commands.ranges)
+        self.gaits_ranges = class_to_dict(self.cfg.gait.ranges)
         if self.cfg.terrain.mesh_type not in ['heightfield', 'trimesh']:
             self.cfg.terrain.curriculum = False
         self.max_episode_length_s = self.cfg.env.episode_length_s
         self.max_episode_length = np.ceil(self.max_episode_length_s / self.dt)
-
         self.cfg.domain_rand.push_interval = np.ceil(self.cfg.domain_rand.push_interval_s / self.dt)
 
     def _draw_debug_vis(self):
@@ -1102,6 +1247,9 @@ class PointFoot:
 
     def _compute_feet_states(self):
         self.feet_state = self.rigid_body_states[:, self.feet_indices, :]
+        self.foot_quat = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.feet_indices, 3:7]
+        self.foot_positions = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.feet_indices, 0:3]
+        self.foot_velocities = (self.foot_positions - self.last_foot_positions) / self.dt#todo:last_foot_position               
         self.last_feet_air_time = self.feet_air_time * self.first_contact + self.last_feet_air_time * ~self.first_contact
         self.feet_air_time *= ~self.contact_filt
         if self._include_feet_height_rewards:
@@ -1210,3 +1358,102 @@ class PointFoot:
     def _reward_orientation(self):
         # Penalize non flat base orientation
         return torch.sum(torch.square(self.projected_gravity[:,:2]),dim=1)
+    
+    def _reward_keep_balance(self):
+        return torch.ones(
+            self.num_envs, dtype=torch.float, device=self.device, requires_grad=False
+        )
+    
+    def _reward_tracking_lin_vel_pb(self):
+        delta_phi = ~self.reset_buf * (
+                self._reward_tracking_lin_vel() - self.rwd_linVelTrackPrev
+        )
+        # return ang_vel_error
+        return delta_phi / self.dt
+
+    def _reward_tracking_ang_vel_pb(self):
+        delta_phi = ~self.reset_buf * (
+                self._reward_tracking_ang_vel() - self.rwd_angVelTrackPrev
+        )
+        # return ang_vel_error
+        return delta_phi / self.dt
+    
+    def _reward_tracking_contacts_shaped_force(self):
+        foot_forces = torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1)
+        desired_contact = self.desired_contact_states
+
+        reward = 0
+        if self.reward_scales["tracking_contacts_shaped_force"] > 0:
+            for i in range(len(self.feet_indices)):
+                reward += (1 - desired_contact[:, i]) * torch.exp(
+                    -foot_forces[:, i] ** 2 / self.cfg.rewards.gait_force_sigma
+                )
+        else:
+            for i in range(len(self.feet_indices)):
+                reward += (1 - desired_contact[:, i]) * (
+                        1
+                        - torch.exp(
+                    -foot_forces[:, i] ** 2 / self.cfg.rewards.gait_force_sigma
+                )
+                )
+
+        return reward / len(self.feet_indices)
+
+    def _reward_tracking_contacts_shaped_vel(self):
+        foot_velocities = torch.norm(self.foot_velocities, dim=-1)
+        desired_contact = self.desired_contact_states
+        reward = 0
+        if self.reward_scales["tracking_contacts_shaped_vel"] > 0:
+            for i in range(len(self.feet_indices)):
+                reward += desired_contact[:, i] * torch.exp(
+                    -foot_velocities[:, i] ** 2 / self.cfg.rewards.gait_vel_sigma
+                )
+        else:
+            for i in range(len(self.feet_indices)):
+                reward += desired_contact[:, i] * (
+                        1
+                        - torch.exp(
+                    -foot_velocities[:, i] ** 2 / self.cfg.rewards.gait_vel_sigma
+                )
+                )
+        return reward / len(self.feet_indices)
+
+    def _reward_single_contact(self):
+        contacts = self.contact_forces[:, self.feet_indices, 2] > 0.1
+        single_contact = torch.sum(1.0 * contacts, dim=1) == 1
+        return 1.0 * single_contact
+    #金鸡独立！
+
+    def _reward_feet_height(self):
+        feet_height = self.cfg.rewards.base_height_target * 0.05
+
+        # penalize stand still
+        reward = torch.sum(
+            torch.exp(-self.foot_heights / feet_height)
+            * torch.exp(-torch.norm(self.commands[:, :3], dim=1, keepdim=True)).repeat(1, len(self.feet_indices)),
+            dim=1,
+        )
+
+        reward += torch.sum(
+            torch.exp(-self.foot_heights / feet_height)
+            * torch.square(torch.norm(self.foot_velocities[:, :, :2], dim=-1)),
+            dim=1,
+        )
+        feet_height *= 0.5
+        reward += torch.sum(
+            torch.exp(-self.foot_heights / feet_height)
+            * torch.square(torch.abs(self.foot_velocities[:, :, 2])),
+            dim=1,
+        )
+        return reward
+    
+    def _reward_action_smooth(self):
+        # Penalize changes in actions
+        return torch.sum(
+            torch.square(
+                self.actions
+                - 2 * self.last_actions[:, :, 0]
+                + self.last_actions[:, :, 1]
+            ),
+            dim=1,
+        )
