@@ -314,12 +314,16 @@ class PointFoot:
 
     def _compose_privileged_obs_buf_no_height_measure(self):
         self.privileged_obs_buf = torch.cat((self.base_ang_vel * self.obs_scales.ang_vel,
-                                             self.projected_gravity,
+                                             self.base_lin_vel*self.obs_scales.lin_vel,
                                              (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
                                              self.dof_vel * self.obs_scales.dof_vel,
                                              self.actions,
                                              self.commands[:, :3] * self.commands_scale,
                                              ), dim=-1)
+        self.privileged_obs_buf = torch.cat((self.privileged_obs_buf,self.kp_tensor,
+                         self.kd_tensor,
+                        self.friction_coeffs_tensor,
+                        self.body_props_tensor),dim=-1)
 
     def compute_proprioceptive_observations(self):
         self._compose_proprioceptive_obs_buf_no_height_measure()
@@ -337,10 +341,7 @@ class PointFoot:
         )
         #todo: cat other hidden parameters
         #print(self.kp_tensor.shape)
-        buf = torch.cat((buf,self.kp_tensor,
-                         self.kd_tensor,
-                        self.friction_coeffs_tensor,
-                        self.body_props_tensor),dim=-1)
+
         return buf
 
     def _compose_proprioceptive_obs_buf_no_height_measure(self):
@@ -357,6 +358,7 @@ class PointFoot:
         You can add more observations here if needed.
         '''
         self.proprioceptive_obs_buf = torch.cat((self.base_ang_vel * self.obs_scales.ang_vel,
+                                                 self.base_lin_vel*self.obs_scales.lin_vel,
                                                  self.projected_gravity,
                                                  (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
                                                  self.dof_vel * self.obs_scales.dof_vel,
@@ -486,20 +488,23 @@ class PointFoot:
         Args:
             env_ids (List[int]): Environments ids for which new commands are needed
         """
-        self.commands[env_ids, 0] = torch_rand_float(self.command_ranges["lin_vel_x"][0],
-                                                     self.command_ranges["lin_vel_x"][1], (len(env_ids), 1),
-                                                     device=self.device).squeeze(1)
-        self.commands[env_ids, 1] = torch_rand_float(self.command_ranges["lin_vel_y"][0],
-                                                     self.command_ranges["lin_vel_y"][1], (len(env_ids), 1),
-                                                     device=self.device).squeeze(1)
-        if self.cfg.commands.heading_command:
-            self.commands[env_ids, 3] = torch_rand_float(self.command_ranges["heading"][0],
-                                                         self.command_ranges["heading"][1], (len(env_ids), 1),
-                                                         device=self.device).squeeze(1)
-        else:
-            self.commands[env_ids, 2] = torch_rand_float(self.command_ranges["ang_vel_yaw"][0],
-                                                         self.command_ranges["ang_vel_yaw"][1], (len(env_ids), 1),
-                                                         device=self.device).squeeze(1)
+        self.commands[env_ids,0]=torch_rand_float(self.command_ranges["pos_x"][0],
+                                                      self.command_ranges["pos_x"][1], (len(env_ids), 1),
+                                                      device=self.device).squeeze(1)
+        # self.commands[env_ids, 0] = torch_rand_float(self.command_ranges["lin_vel_x"][0],
+        #                                              self.command_ranges["lin_vel_x"][1], (len(env_ids), 1),
+        #                                              device=self.device).squeeze(1)
+        # self.commands[env_ids, 1] = torch_rand_float(self.command_ranges["lin_vel_y"][0],
+        #                                              self.command_ranges["lin_vel_y"][1], (len(env_ids), 1),
+        #                                              device=self.device).squeeze(1)
+        # if self.cfg.commands.heading_command:
+        #     self.commands[env_ids, 3] = torch_rand_float(self.command_ranges["heading"][0],
+        #                                                  self.command_ranges["heading"][1], (len(env_ids), 1),
+        #                                                  device=self.device).squeeze(1)
+        # else:
+        #     self.commands[env_ids, 2] = torch_rand_float(self.command_ranges["ang_vel_yaw"][0],
+        #                                                  self.command_ranges["ang_vel_yaw"][1], (len(env_ids), 1),
+        #                                                  device=self.device).squeeze(1)
 
         # set small commands to zero
         self.commands[env_ids, :2] *= (torch.norm(self.commands[env_ids, :2], dim=1) > 0.2).unsqueeze(1)

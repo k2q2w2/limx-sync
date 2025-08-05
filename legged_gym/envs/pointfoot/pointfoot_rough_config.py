@@ -3,7 +3,7 @@ from legged_gym.envs.base.base_config import BaseConfig
 class PointFootRoughCfg(BaseConfig):
     class env:
         num_envs = 4096*2
-        num_propriceptive_obs = 27
+        num_propriceptive_obs = 27+3
         num_privileged_obs = 148+2*6+1+4  # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
         #add p,d_gains(2*6) friction:1 mass&com:4 
         num_actions = 6
@@ -21,7 +21,7 @@ class PointFootRoughCfg(BaseConfig):
         dynamic_friction = 0.6
         restitution = 0.8
         # rough terrain only:
-        measure_heights_actor = False
+        measure_heights_actor = True
         measure_heights_critic = True
         measured_points_x = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4,
                              0.5]  # 1mx1m rectangle (without center line)
@@ -41,7 +41,7 @@ class PointFootRoughCfg(BaseConfig):
     class commands:
         curriculum = False
         max_curriculum = 1.
-        num_commands = 7  # default: x , y ,z ,quat
+        num_commands = 3  # default: x , y ,z 
         resampling_time = 10.  # time before command are changed[s]
         heading_command = True  # if true: compute ang vel command from heading error
 
@@ -50,7 +50,7 @@ class PointFootRoughCfg(BaseConfig):
             lin_vel_y = [-0.2, 0.2]  # min max [m/s]
             ang_vel_yaw = [-1, 1]  # min max [rad/s]
             heading = [-3.14, 3.14]
-            
+            pos_x = [-5.0,5.0]
 
     class init_state:
         pos = [0.0, 0.0, 0.62]  # x,y,z [m]
@@ -141,7 +141,7 @@ class PointFootRoughCfg(BaseConfig):
     class rewards:
         class scales:
             action_rate = -0.01
-            ang_vel_xy = -0.05
+            ang_vel_xy = -0.00
             base_height = -2.0
             collision = -50.0
             dof_acc = -2.5e-07
@@ -150,8 +150,8 @@ class PointFootRoughCfg(BaseConfig):
             torques = -2.5e-05
             feet_distance = -65
             survival = 2.0
-            tracking_lin_vel =4.0
-            tracking_ang_vel =2.0
+            tracking_lin_vel =0.0
+            tracking_ang_vel =0.0
             base_height=-0.25
             orientation =4.0
 
