@@ -274,6 +274,10 @@ class PointFoot:
         self.last_max_feet_height[env_ids] = 0.
         self.episode_length_buf[env_ids] = 0
         self.reset_buf[env_ids] = 1
+        self.last_base_position[env_ids] = self.base_position[env_ids]
+        self.last_foot_positions[env_ids] = self.foot_positions[env_ids]
+        self.last_dof_vel[env_ids] = 0.0
+        self.feet_air_time[env_ids] = 0.0
 
     def compute_reward(self):
         """ Compute rewards
@@ -854,7 +858,12 @@ class PointFoot:
         self.rigid_body_external_torques = torch.zeros(
             (self.num_envs, self.num_bodies, 3), device=self.device, requires_grad=False
         )
-
+        self.foot_positions = self.rigid_body_states.view(
+            self.num_envs, self.num_bodies, 13
+        )[:, self.feet_indices, 0:3]
+        self.last_foot_positions = torch.zeros_like(self.foot_positions)
+        self.foot_heights = torch.zeros_like(self.foot_positions)
+        self.foot_velocities = torch.zeros_like(self.foot_positions)
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
@@ -946,7 +955,8 @@ class PointFoot:
             self.reward_names.append(name)
             name = '_reward_' + name
             self.reward_functions.append(getattr(self, name))
-
+        self.base_position = self.root_states[:, :3]
+        self.last_base_position = self.base_position.clone()
         # reward episode sums
         self.episode_sums = {
             name: torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
@@ -1424,36 +1434,36 @@ class PointFoot:
         return 1.0 * single_contact
     #金鸡独立！
 
-    def _reward_feet_height(self):
-        feet_height = self.cfg.rewards.base_height_target * 0.05
+    # def _reward_feet_height(self):
+    #     feet_height = self.cfg.rewards.base_height_target * 0.05
 
-        # penalize stand still
-        reward = torch.sum(
-            torch.exp(-self.foot_heights / feet_height)
-            * torch.exp(-torch.norm(self.commands[:, :3], dim=1, keepdim=True)).repeat(1, len(self.feet_indices)),
-            dim=1,
-        )
+    #     # penalize stand still
+    #     reward = torch.sum(
+    #         torch.exp(-self.foot_heights / feet_height)
+    #         * torch.exp(-torch.norm(self.commands[:, :3], dim=1, keepdim=True)).repeat(1, len(self.feet_indices)),
+    #         dim=1,
+    #     )
 
-        reward += torch.sum(
-            torch.exp(-self.foot_heights / feet_height)
-            * torch.square(torch.norm(self.foot_velocities[:, :, :2], dim=-1)),
-            dim=1,
-        )
-        feet_height *= 0.5
-        reward += torch.sum(
-            torch.exp(-self.foot_heights / feet_height)
-            * torch.square(torch.abs(self.foot_velocities[:, :, 2])),
-            dim=1,
-        )
-        return reward
+    #     reward += torch.sum(
+    #         torch.exp(-self.foot_heights / feet_height)
+    #         * torch.square(torch.norm(self.foot_velocities[:, :, :2], dim=-1)),
+    #         dim=1,
+    #     )
+    #     feet_height *= 0.5
+    #     reward += torch.sum(
+    #         torch.exp(-self.foot_heights / feet_height)
+    #         * torch.square(torch.abs(self.foot_velocities[:, :, 2])),
+    #         dim=1,
+    #     )
+    #     return reward
     
-    def _reward_action_smooth(self):
-        # Penalize changes in actions
-        return torch.sum(
-            torch.square(
-                self.actions
-                - 2 * self.last_actions[:, :, 0]
-                + self.last_actions[:, :, 1]
-            ),
-            dim=1,
-        )
+    # def _reward_action_smooth(self):
+    #     # Penalize changes in actions
+    #     return torch.sum(
+    #         torch.square(
+    #             self.actions
+    #             - 2 * self.last_actions[:, :, 0]
+    #             + self.last_actions[:, :, 1]
+    #         ),
+    #         dim=1,
+    #     )

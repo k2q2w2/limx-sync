@@ -4,7 +4,7 @@ class PointFootRoughCfg(BaseConfig):
     class env:
         num_envs = 4096*2
         num_propriceptive_obs = 27+2+4
-        num_privileged_obs = 148+2*6+1+4+2+4  # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
+        num_privileged_obs = 165 # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
         #add p,d_gains(2*6) friction:1 mass&com:4 
         num_actions = 6
         env_spacing = 3.  # not used with heightfields/trimeshes
@@ -167,8 +167,8 @@ class PointFootRoughCfg(BaseConfig):
             base_height=-0.25
             orientation =4.0
             keep_balance = 1.0
-            action_smooth = -0.01
-            feet_height = -0.1
+            #action_smooth = -0.01
+            #feet_height = -0.1
             tracking_contacts_shaped_force = -2
             tracking_contacts_shaped_vel = -2
 
