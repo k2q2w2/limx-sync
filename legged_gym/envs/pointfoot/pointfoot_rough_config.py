@@ -179,8 +179,8 @@ class PointFootRoughCfg(BaseConfig):
             keep_balance = 1.0
             #action_smooth = -0.01
             #feet_height = -0.1
-            tracking_contacts_shaped_force = 2
-            tracking_contacts_shaped_vel = 2
+            tracking_contacts_shaped_force = 0.0
+            tracking_contacts_shaped_vel = 0.0
             single_contact = 1.0
 
         base_height_target = 0.62
