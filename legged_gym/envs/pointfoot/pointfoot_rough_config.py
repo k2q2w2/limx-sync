@@ -51,6 +51,8 @@ class PointFootRoughCfg(BaseConfig):
             ang_vel_yaw = [-1, 1]  # min max [rad/s]
             heading = [-3.14, 3.14]
             pos_x = [-5.0,5.0]
+            pos_y = [-5.0,5.0]
+            pos_yaw = [-5.0,5.0]
 
     class init_state:
         pos = [0.0, 0.0, 0.62]  # x,y,z [m]
