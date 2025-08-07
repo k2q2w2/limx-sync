@@ -3,8 +3,8 @@ from legged_gym.envs.base.base_config import BaseConfig
 class PointFootRoughCfg(BaseConfig):
     class env:
         num_envs = 4096*2
-        num_propriceptive_obs = 27+3
-        num_privileged_obs = 148+2*6+1+4  # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
+        num_propriceptive_obs = 27+2+4
+        num_privileged_obs = 184 # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
         #add p,d_gains(2*6) friction:1 mass&com:4 
         num_actions = 6
         env_spacing = 3.  # not used with heightfields/trimeshes
@@ -47,7 +47,7 @@ class PointFootRoughCfg(BaseConfig):
 
         class ranges:
             lin_vel_x = [-1.0, 1.0]  # min max [m/s]
-            lin_vel_y = [-0.2, 0.2]  # min max [m/s]
+            lin_vel_y = [-0.6, 0.6]  # min max [m/s]
             ang_vel_yaw = [-1, 1]  # min max [rad/s]
             heading = [-3.14, 3.14]
             pos_x = [-5.0,5.0]
@@ -136,8 +136,29 @@ class PointFootRoughCfg(BaseConfig):
         push_robots = True
         push_interval_s = 7
         max_push_vel_xy = 1.
-        #todo:random pd
+        
+        randomize_motor = True
+        motor_strength_range = [0.8, 1.2]
 
+        randomize_kpkd = True
+        kp_range = [0.8, 1.2]
+        kd_range = [0.8, 1.2]
+
+        randomize_lag_timesteps = True
+        lag_timesteps = 3
+
+
+    class gait:
+        num_gait_params = 4
+        resampling_time = 5  # time before command are changed[s]
+        class ranges:
+            frequencies = [1.5, 2.5]
+            offsets = [0, 1]  # offset is hard to learn
+            # durations = [0.3, 0.8]  # small durations(<0.4) is hard to learn
+            # frequencies = [2, 2]
+            # offsets = [0.5, 0.5]
+            durations = [0.5, 0.5]
+            swing_height = [0.0, 0.1]
     class rewards:
         class scales:
             action_rate = -0.01
@@ -149,11 +170,19 @@ class PointFootRoughCfg(BaseConfig):
             torque_limits = -0.1
             torques = -2.5e-05
             feet_distance = -65
-            survival = 2.0
-            tracking_lin_vel =0.0
-            tracking_ang_vel =0.0
+            survival = 1.0
+            tracking_lin_vel =1.0
+            tracking_ang_vel =0.5
+            tracking_lin_vel_pb = 1.0
+            tracking_ang_vel_pb = 0.2
             base_height=-0.25
             orientation =4.0
+            keep_balance = 1.0
+            #action_smooth = -0.01
+            #feet_height = -0.1
+            tracking_contacts_shaped_force = 2
+            tracking_contacts_shaped_vel = 2
+            single_contact = 1.0
 
         base_height_target = 0.62
         soft_dof_pos_limit = 0.95  # percentage of urdf limits, values above this limit are penalized
@@ -165,6 +194,10 @@ class PointFootRoughCfg(BaseConfig):
         min_feet_air_time = 0.25
         max_feet_air_time = 0.65
         tracking_sigma = 0.25  # tracking reward = exp(-error^2/sigma)
+        kappa_gait_probs = 0.05
+        gait_force_sigma = 25.0
+        gait_vel_sigma = 0.25
+        gait_height_sigma = 0.005
 
     class normalization:
         class obs_scales:
@@ -257,6 +290,6 @@ class PointFootRoughCfgPPO(BaseConfig):
         run_name = ''
         # load and resume
         resume = False
-        load_run = "models"  # -1 = last run
+        load_run = -1 # -1 = last run
         checkpoint = -1  # -1 = last saved model
         resume_path = "model_4000.pt"  # updated from load_run and chkpt
