@@ -4,7 +4,7 @@ class PointFootRoughCfg(BaseConfig):
     class env:
         num_envs = 4096*2
         num_propriceptive_obs = 27+2+4
-        num_privileged_obs = 165 # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
+        num_privileged_obs = 184 # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
         #add p,d_gains(2*6) friction:1 mass&com:4 
         num_actions = 6
         env_spacing = 3.  # not used with heightfields/trimeshes
@@ -135,7 +135,17 @@ class PointFootRoughCfg(BaseConfig):
         push_robots = True
         push_interval_s = 7
         max_push_vel_xy = 1.
-        #todo:random pd
+        
+        randomize_motor = True
+        motor_strength_range = [0.8, 1.2]
+
+        randomize_kpkd = True
+        kp_range = [0.8, 1.2]
+        kd_range = [0.8, 1.2]
+
+        randomize_lag_timesteps = True
+        lag_timesteps = 3
+
 
     class gait:
         num_gait_params = 4
@@ -169,8 +179,9 @@ class PointFootRoughCfg(BaseConfig):
             keep_balance = 1.0
             #action_smooth = -0.01
             #feet_height = -0.1
-            tracking_contacts_shaped_force = -2
-            tracking_contacts_shaped_vel = -2
+            tracking_contacts_shaped_force = 2
+            tracking_contacts_shaped_vel = 2
+            single_contact = 1.0
 
         base_height_target = 0.62
         soft_dof_pos_limit = 0.95  # percentage of urdf limits, values above this limit are penalized

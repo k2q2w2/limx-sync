@@ -335,6 +335,15 @@ class PointFoot:
                                              self.actions,
                                              self.commands[:, :3] * self.commands_scale,
                                              ), dim=-1)
+        self.privileged_obs_buf = torch.cat((self.privileged_obs_buf,
+                        self.kp_tensor,
+                        self.kd_tensor,
+                        self.friction_coeffs_tensor,
+                        self.body_props_tensor,
+                        self.randomized_lag_tensor,
+                        self.motor_strength, 
+                        self.kp_factor,
+                        self.kd_factor),dim=-1)
 
     def compute_proprioceptive_observations(self):
         self._compose_proprioceptive_obs_buf_no_height_measure()
@@ -352,10 +361,6 @@ class PointFoot:
         )
         #todo: cat other hidden parameters
         #print(self.kp_tensor.shape)
-        buf = torch.cat((buf,self.kp_tensor,
-                         self.kd_tensor,
-                        self.friction_coeffs_tensor,
-                        self.body_props_tensor),dim=-1)
         return buf
 
     def _compose_proprioceptive_obs_buf_no_height_measure(self):
@@ -623,10 +628,17 @@ class PointFoot:
         """
         # pd controller
         actions_scaled = actions * self.cfg.control.action_scale
+
+
+        if self.cfg.domain_rand.randomize_lag_timesteps:
+            self.lag_buffer = torch.cat([self.lag_buffer[:,1:,:].clone(),actions_scaled.unsqueeze(1).clone()],dim=1)
+            actions_scaled = self.lag_buffer[self.num_envs_indexes,self.randomized_lag,:] + self.default_dof_pos #todo: update this index
+
+
         control_type = self.cfg.control.control_type
         if control_type == "P":
-            torques = self.p_gains * (
-                    actions_scaled + self.default_dof_pos - self.dof_pos) - self.d_gains * self.dof_vel
+            torques = self.kp_factor*self.p_gains * (
+                    actions_scaled + self.default_dof_pos - self.dof_pos) - self.kd_factor*self.d_gains * self.dof_vel
         elif control_type == "V":
             torques = self.p_gains * (actions_scaled - self.dof_vel) - self.d_gains * (
                     self.dof_vel - self.last_dof_vel) / self.sim_params.dt
@@ -634,6 +646,7 @@ class PointFoot:
             torques = actions_scaled
         else:
             raise NameError(f"Unknown controller type: {control_type}")
+        torques = torques*self.motor_strength
         return torch.clip(torques, -self.torque_limits, self.torque_limits)
 
     def _reset_dofs(self, env_ids):
@@ -862,6 +875,7 @@ class PointFoot:
             self.num_envs, self.num_bodies, 13
         )[:, self.feet_indices, 0:3]
         self.last_foot_positions = torch.zeros_like(self.foot_positions)
+        self.lag_buffer = torch.zeros(self.num_envs,self.cfg.domain_rand.lag_timesteps,self.num_actions,device=self.device,requires_grad=False)
         self.foot_heights = torch.zeros_like(self.foot_positions)
         self.foot_velocities = torch.zeros_like(self.foot_positions)
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
@@ -870,6 +884,13 @@ class PointFoot:
         if self.cfg.terrain.measure_heights_actor or self.cfg.terrain.measure_heights_critic:
             self.height_points = self._init_height_points()
         self.measured_heights = 0
+
+        str_rng = self.cfg.domain_rand.motor_strength_range
+        kp_str_rng = self.cfg.domain_rand.kp_range
+        kd_str_rng = self.cfg.domain_rand.kd_range
+        self.motor_strength = (str_rng[1] - str_rng[0]) * torch.rand(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False) + str_rng[0]
+        self.kp_factor = (kp_str_rng[1] - kp_str_rng[0]) * torch.rand(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False) + kp_str_rng[0]
+        self.kd_factor = (kd_str_rng[1] - kd_str_rng[0]) * torch.rand(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False) + kd_str_rng[0]
 
         # joint positions offsets and PD gains
         self.default_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
@@ -1106,6 +1127,11 @@ class PointFoot:
 
         self.termination_contact_indices = torch.zeros(len(termination_contact_names), dtype=torch.long,
                                                        device=self.device, requires_grad=False)
+        self.num_envs_indexes = list(range(0,self.num_envs))
+        self.randomized_lag = [self.cfg.domain_rand.lag_timesteps-1 for i in range(self.num_envs)]
+        self.randomized_lag_tensor = torch.FloatTensor(self.randomized_lag).view(-1,1)/(self.cfg.domain_rand.lag_timesteps-1)
+        self.randomized_lag_tensor = self.randomized_lag_tensor.to(self.device)
+        self.randomized_lag_tensor.requires_grad_ = False
         for i in range(len(termination_contact_names)):
             self.termination_contact_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0],
                                                                                         self.actor_handles[0],
@@ -1430,7 +1456,7 @@ class PointFoot:
 
     def _reward_single_contact(self):
         contacts = self.contact_forces[:, self.feet_indices, 2] > 0.1
-        single_contact = torch.sum(1.0 * contacts, dim=1) == 1
+        single_contact = torch.sum( contacts, dim=1) == 1
         return 1.0 * single_contact
     #金鸡独立！
 
