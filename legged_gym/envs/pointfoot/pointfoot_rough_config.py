@@ -179,8 +179,8 @@ class PointFootRoughCfg(BaseConfig):
             keep_balance = 1.0
             #action_smooth = -0.01
             #feet_height = -0.1
-            tracking_contacts_shaped_force = 0.0
-            tracking_contacts_shaped_vel = 0.0
+            tracking_contacts_shaped_force = -2.0
+            tracking_contacts_shaped_vel = -2.0
             single_contact = 1.0
 
         base_height_target = 0.62
@@ -280,11 +280,11 @@ class PointFootRoughCfgPPO(BaseConfig):
     class runner:
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
-        num_steps_per_env = 24  # per iteration
+        num_steps_per_env = 48  # per iteration
         max_iterations = 10000  # number of policy updates
 
         # logging
-        save_interval = 1000  # check for potential saves every this many iterations
+        save_interval = 500  # check for potential saves every this many iterations
         experiment_name = 'pointfoot_rough'
         run_name = ''
         # load and resume
