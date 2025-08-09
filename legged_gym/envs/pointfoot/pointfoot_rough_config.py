@@ -152,7 +152,7 @@ class PointFootRoughCfg(BaseConfig):
         resampling_time = 5  # time before command are changed[s]
         class ranges:
             frequencies = [1.5, 2.5]
-            offsets = [0, 1]  # offset is hard to learn
+            offsets = [0.5, 0.5]  # offset is hard to learn
             # durations = [0.3, 0.8]  # small durations(<0.4) is hard to learn
             # frequencies = [2, 2]
             # offsets = [0.5, 0.5]
@@ -170,8 +170,8 @@ class PointFootRoughCfg(BaseConfig):
             torques = -2.5e-05
             feet_distance = -65
             survival = 1.0
-            tracking_lin_vel =3.0
-            tracking_ang_vel =1.5
+            tracking_lin_vel =5.0
+            tracking_ang_vel =2.5
             tracking_lin_vel_pb = 1.0
             tracking_ang_vel_pb = 0.2
             base_height=-0.25
