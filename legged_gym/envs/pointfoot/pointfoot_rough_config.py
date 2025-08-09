@@ -284,11 +284,11 @@ class PointFootRoughCfgPPO(BaseConfig):
         max_iterations = 10000  # number of policy updates
 
         # logging
-        save_interval = 500  # check for potential saves every this many iterations
+        save_interval = 1000  # check for potential saves every this many iterations
         experiment_name = 'pointfoot_rough'
         run_name = ''
         # load and resume
-        resume = False
+        resume = True
         load_run = -1 # -1 = last run
         checkpoint = -1  # -1 = last saved model
         resume_path = "model_4000.pt"  # updated from load_run and chkpt
