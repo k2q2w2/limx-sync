@@ -280,7 +280,7 @@ class PointFootRoughCfgPPO(BaseConfig):
     class runner:
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
-        num_steps_per_env = 48  # per iteration
+        num_steps_per_env = 48*4  # per iteration
         max_iterations = 10000  # number of policy updates
 
         # logging
