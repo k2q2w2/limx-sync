@@ -258,9 +258,9 @@ class PointFootRoughCfgPPO(BaseConfig):
         critic_hidden_dims = [512, 256, 128]
         activation = 'elu'  # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
         # only for 'ActorCriticRecurrent':
-        rnn_type = 'gru'
-        rnn_hidden_size = 512
-        rnn_num_layers = 1
+        # rnn_type = 'gru'
+        # rnn_hidden_size = 512
+        # rnn_num_layers = 1
 
     class algorithm:
         # training params
@@ -268,7 +268,7 @@ class PointFootRoughCfgPPO(BaseConfig):
         use_clipped_value_loss = True
         clip_param = 0.2
         entropy_coef = 0.01
-        num_learning_epochs = 5
+        num_learning_epochs = 20
         num_mini_batches = 4  # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 1.e-3  # 5.e-4
         schedule = 'adaptive'  # could be adaptive, fixed
@@ -278,7 +278,7 @@ class PointFootRoughCfgPPO(BaseConfig):
         max_grad_norm = 0.01
 
     class runner:
-        policy_class_name = 'ActorCriticRecurrent'
+        policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
         num_steps_per_env = 48  # per iteration
         max_iterations = 10000  # number of policy updates
