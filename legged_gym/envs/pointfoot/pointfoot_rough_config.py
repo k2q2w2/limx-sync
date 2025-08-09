@@ -170,8 +170,8 @@ class PointFootRoughCfg(BaseConfig):
             torques = -2.5e-05
             feet_distance = -65
             survival = 1.0
-            tracking_lin_vel =1.0
-            tracking_ang_vel =0.5
+            tracking_lin_vel =3.0
+            tracking_ang_vel =1.5
             tracking_lin_vel_pb = 1.0
             tracking_ang_vel_pb = 0.2
             base_height=-0.25
@@ -179,8 +179,8 @@ class PointFootRoughCfg(BaseConfig):
             keep_balance = 1.0
             #action_smooth = -0.01
             #feet_height = -0.1
-            tracking_contacts_shaped_force = 0.0
-            tracking_contacts_shaped_vel = 0.0
+            tracking_contacts_shaped_force = -2.0
+            tracking_contacts_shaped_vel = -2.0
             single_contact = 1.0
 
         base_height_target = 0.62
