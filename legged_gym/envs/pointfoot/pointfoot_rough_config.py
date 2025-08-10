@@ -43,16 +43,14 @@ class PointFootRoughCfg(BaseConfig):
         max_curriculum = 1.
         num_commands = 3  # default: x , y ,z 
         resampling_time = 10.  # time before command are changed[s]
-        heading_command = True  # if true: compute ang vel command from heading error
+        heading_command = False  # if true: compute ang vel command from heading error
 
         class ranges:
-            lin_vel_x = [-1.0, 1.0]  # min max [m/s]
-            lin_vel_y = [-0.6, 0.6]  # min max [m/s]
-            ang_vel_yaw = [-1, 1]  # min max [rad/s]
-            heading = [-3.14, 3.14]
-            pos_x = [-5.0,5.0]
-            pos_y = [-5.0,5.0]
-            pos_yaw = [-5.0,5.0]
+            use_polar = False
+            # if use polar: it is rho and theta, else x and y
+            pos_1 = [1.5, 7.5] # min max [m] 
+            pos_2 = [-2.0, 2.0]  # rad if polar
+            heading = [-0.3, 0.3]  # a residual heading plus theta
 
     class init_state:
         pos = [0.0, 0.0, 0.62]  # x,y,z [m]
@@ -127,6 +125,16 @@ class PointFootRoughCfg(BaseConfig):
         max_linear_velocity = 1000.
         armature = 0.
         thickness = 0.01
+        #add obstacle
+        load_object = True
+        object_files = {
+        # '{LEGGED_GYM_ROOT_DIR}/resources/objects/DiningChair/model.urdf': 0.4,
+        # '{LEGGED_GYM_ROOT_DIR}/resources/objects/OfficeChair/model.urdf': 0.4,
+        '{LEGGED_GYM_ROOT_DIR}/resources/objects/cylindar.urdf': 0.4,
+        }
+        object_num = 8
+        test_mode = False
+        test_obj_pos = []
 
     class domain_rand:
         randomize_friction = True
@@ -164,7 +172,7 @@ class PointFootRoughCfg(BaseConfig):
     class rewards:
         class scales:
             action_rate = -0.01
-            ang_vel_xy = -0.00
+            #ang_vel_xy = -0.00
             base_height = -2.0
             collision = -50.0
             dof_acc = -2.5e-07
@@ -172,14 +180,14 @@ class PointFootRoughCfg(BaseConfig):
             torque_limits = -0.1
             torques = -2.5e-05
             feet_distance = -65
-            survival = 1.0
-            tracking_lin_vel =1.0
-            tracking_ang_vel =0.5
-            tracking_lin_vel_pb = 1.0
-            tracking_ang_vel_pb = 0.2
+            #survival = 1.0
+            #tracking_lin_vel =1.0
+            #tracking_ang_vel =0.5
+            #tracking_lin_vel_pb = 1.0
+            #tracking_ang_vel_pb = 0.2
             base_height=-0.25
             orientation =4.0
-            keep_balance = 1.0
+            #keep_balance = 1.0
             #action_smooth = -0.01
             #feet_height = -0.1
             tracking_contacts_shaped_force = 2

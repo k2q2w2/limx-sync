@@ -195,6 +195,8 @@ class PointFoot:
         self.compute_reward()
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
         self.reset_idx(env_ids)
+        if self.cfg.asset.load_object: # save last obj relpos before update obs
+            for _obj in range(self.cfg.asset.object_num): self.last_obj_relpos[_obj][:] = self.obj_relpos[_obj].clone()
         self.compute_observations()  # in some cases a simulation step might be required to refresh some obs (for example body positions)
 
         self.last_actions[:] = self.actions[:]
@@ -247,6 +249,8 @@ class PointFoot:
         self._resample(env_ids)
 
         self._reset_buffers(env_ids)
+        if self.cfg.asset.load_object:
+            self.obj_state_rand[env_ids] = self.obj_state_rand[env_ids].uniform_(0., 1.)
         # fill extras
         self.extras["episode"] = {}
         for key in self.episode_sums.keys():
@@ -547,26 +551,37 @@ class PointFoot:
         Args:
             env_ids (List[int]): Environments ids for which new commands are needed
         """
-        self.commands[env_ids,0]=torch_rand_float(self.command_ranges["pos_x"][0],
-                                                      self.command_ranges["pos_x"][1], (len(env_ids), 1),
-                                                      device=self.device).squeeze(1)
-        # self.commands[env_ids, 0] = torch_rand_float(self.command_ranges["lin_vel_x"][0],
-        #                                              self.command_ranges["lin_vel_x"][1], (len(env_ids), 1),
-        #                                              device=self.device).squeeze(1)
-        # self.commands[env_ids, 1] = torch_rand_float(self.command_ranges["lin_vel_y"][0],
-        #                                              self.command_ranges["lin_vel_y"][1], (len(env_ids), 1),
-        #                                              device=self.device).squeeze(1)
-        # if self.cfg.commands.heading_command:
-        #     self.commands[env_ids, 3] = torch_rand_float(self.command_ranges["heading"][0],
-        #                                                  self.command_ranges["heading"][1], (len(env_ids), 1),
-        #                                                  device=self.device).squeeze(1)
-        # else:
-        #     self.commands[env_ids, 2] = torch_rand_float(self.command_ranges["ang_vel_yaw"][0],
-        #                                                  self.command_ranges["ang_vel_yaw"][1], (len(env_ids), 1),
-        #                                                  device=self.device).squeeze(1)
+        tbd_envs = env_ids.clone()
+        while len(tbd_envs) > 0:
+            _target_pos1 = torch_rand_float(self.command_ranges["pos_1"][0], self.command_ranges["pos_1"][1], (len(tbd_envs), 1), device=self.device)
+            _target_pos2 = torch_rand_float(self.command_ranges["pos_2"][0], self.command_ranges["pos_2"][1], (len(tbd_envs), 1), device=self.device)
+            _target_heading = torch_rand_float(self.command_ranges["heading"][0], self.command_ranges["heading"][1], (len(tbd_envs), 1), device=self.device)
+            if self.cfg.commands.ranges.use_polar:
+                self.position_targets[tbd_envs, 0:1] = self.env_origins[tbd_envs, 0:1] + _target_pos1 * torch.cos(_target_pos2)
+                self.position_targets[tbd_envs, 1:2] = self.env_origins[tbd_envs, 1:2] + _target_pos1 * torch.sin(_target_pos2)
+            else:
+                self.position_targets[tbd_envs, 0:1] = self.env_origins[tbd_envs, 0:1] + _target_pos1
+                self.position_targets[tbd_envs, 1:2] = self.env_origins[tbd_envs, 1:2] + _target_pos2
+            self.position_targets[tbd_envs, 2] = self.env_origins[tbd_envs,2] + 0.5
 
-        # set small commands to zero
-        self.commands[env_ids, :2] *= (torch.norm(self.commands[env_ids, :2], dim=1) > 0.2).unsqueeze(1)
+            pos_diff = self.position_targets[tbd_envs] - self.root_states[tbd_envs, 0:3]
+            self.heading_targets[tbd_envs, :] = wrap_to_pi(_target_heading + torch.atan2(pos_diff[:,1:2],pos_diff[:,0:1]))
+
+            self.commands[tbd_envs, :2] = quat_rotate_inverse(yaw_quat(self.base_quat[tbd_envs]), pos_diff)[:, :2] # only x, y used here
+            forward = quat_apply(self.base_quat[tbd_envs], self.forward_vec[tbd_envs])
+            heading = torch.atan2(forward[:, 1], forward[:, 0])
+            self.commands[tbd_envs, 2] = wrap_to_pi(self.heading_targets[tbd_envs,0] - heading)
+            
+            # reject sampling
+            in_obst = torch.zeros_like(self.heading_targets[:,0], dtype=torch.bool)
+            if self.cfg.asset.load_object:
+                for _obj in range(self.cfg.asset.object_num):
+                    _dist = torch.norm(self.position_targets[tbd_envs, 0:2] - self.root_states_obj[_obj][tbd_envs, 0:2], dim=-1)
+                    _obj_type = _obj % (len(self.object_asset_list))
+                    _radius_obj = self.object_size_list[_obj_type]
+                    _radius_thr = _radius_obj * 1.1 + 0.31415926
+                    in_obst[tbd_envs] = torch.logical_or(in_obst[tbd_envs], _dist<_radius_thr)
+            tbd_envs = in_obst.nonzero(as_tuple=False).flatten()
 
     def _step_contact_targets(self):
         frequencies = self.gaits[:, 0]
@@ -664,11 +679,11 @@ class PointFoot:
         self.dof_pos[env_ids] = self.default_dof_pos * torch_rand_float(0.5, 1.5, (len(env_ids), self.num_dof),
                                                                         device=self.device)
         self.dof_vel[env_ids] = 0.
-
         env_ids_int32 = env_ids.to(dtype=torch.int32)
+        if self.cfg.asset.load_object: env_ids_int32 = env_ids_int32 * (1 + self.cfg.asset.object_num)
         self.gym.set_dof_state_tensor_indexed(self.sim,
                                               gymtorch.unwrap_tensor(self.dof_state),
-                                              gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+                                              gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))#todo: here bug
 
     def _reset_root_states(self, env_ids):
         """ Resets ROOT states position and velocities of selected environments
@@ -689,10 +704,38 @@ class PointFoot:
         # base velocities
         self.root_states[env_ids, 7:13] = torch_rand_float(-0.5, 0.5, (len(env_ids), 6),
                                                            device=self.device)  # [7:10]: lin vel, [10:13]: ang vel
+        #obstacles
         env_ids_int32 = env_ids.to(dtype=torch.int32)
+        if self.cfg.asset.load_object: 
+            _away, _static = self._interpret_obj_state()
+            obj_angle = np.arange(self.cfg.asset.object_num)
+            np.random.shuffle(obj_angle)
+            for _obj in range(self.cfg.asset.object_num):
+                # also reset the dynamic objects
+                self.root_states_obj[_obj][env_ids] = self.base_init_state
+                xs = torch_rand_float(-3.0, 8.0, (len(env_ids), 1), device=self.device)
+                ys = torch_rand_float(-2.5, 2.5, (len(env_ids), 1), device=self.device)
+                xs[xs==0.] = 0.001
+                ys[ys==0.] = 0.001
+                _too_near = (torch.square(xs)+torch.square(ys))<1.1**2
+                xs += _too_near * torch.sign(xs) * 0.9
+                ys += _too_near * torch.sign(ys) * 0.9
+                self.root_states_obj[_obj][env_ids, 0:1] = xs + _static[env_ids,_obj].unsqueeze(1) * 50.0
+                self.root_states_obj[_obj][env_ids, 1:2] = ys
+
+                if self.cfg.asset.test_mode:
+                    n_posset = len(self.cfg.asset.test_obj_pos)
+                    assert n_posset > 0
+                    self.root_states_obj[_obj][env_ids, 0] = self.cfg.asset.test_obj_pos[env_ids%n_posset,0,_obj]  # to sample from tensor
+                    self.root_states_obj[_obj][env_ids, 1] = self.cfg.asset.test_obj_pos[env_ids%n_posset,1,_obj]
+                self.root_states_obj[_obj][env_ids, 2] = 0.51
+                self.root_states_obj[_obj][env_ids, :2] += self.env_origins[env_ids,:2]
+
+            env_ids_int32 = torch.cat([env_ids_int32 * (self.cfg.asset.object_num+1) + _actor for _actor in range(self.cfg.asset.object_num+1)], dim=0).to(dtype=torch.int32)
+        
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
-                                                     gymtorch.unwrap_tensor(self.root_states),
-                                                     gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+                                                    gymtorch.unwrap_tensor(self.root_states_all),
+                                                    gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
 
     def _push_robots(self):
         """Random pushes the robots."""
@@ -716,6 +759,11 @@ class PointFoot:
             gymtorch.unwrap_tensor(self.rigid_body_external_torques),
             gymapi.ENV_SPACE,
         )
+        if self.cfg.asset.load_object: 
+            _away, _static = self._interpret_obj_state()
+            for _obj in range(self.cfg.asset.object_num):
+                self.root_states_obj[_obj][:, 3:7] = self.base_init_state[3:7]
+        self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(self.root_states_all))
 
     def _update_terrain_curriculum(self, env_ids):
         """ Implements the game-inspired curriculum.
@@ -817,16 +865,28 @@ class PointFoot:
         self.gym.refresh_rigid_body_state_tensor(self.sim)
 
         # create some wrapper tensors for different slices
-        self.root_states = gymtorch.wrap_tensor(actor_root_state)
+        #self.root_states = gymtorch.wrap_tensor(actor_root_state)
+
+
+        self.root_states_all = gymtorch.wrap_tensor(actor_root_state)
+        if self.cfg.asset.load_object:
+            self.root_states = self.root_states_all[0::(self.cfg.asset.object_num+1)]
+            self.root_states_obj = [self.root_states_all[_obj::(self.cfg.asset.object_num+1)] for _obj in range(1,1+self.cfg.asset.object_num)]
+            self.obj_relpos = [torch.empty(self.num_envs, 3, device=self.device) for _obj in range(1,1+self.cfg.asset.object_num)]
+            self.last_obj_relpos = [torch.empty(self.num_envs, 3, device=self.device) for _obj in range(1,1+self.cfg.asset.object_num)]
+            self.obj_state_rand = torch.empty(self.num_envs, self.cfg.asset.object_num, device=self.device)
+        else:
+            self.root_states = self.root_states_all
+
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
         self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
         self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
         self.base_quat = self.root_states[:, 3:7]
-        self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_state).view(
+        print(gymtorch.wrap_tensor(rigid_body_state).shape)
+        self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_state)[0:self.num_envs*self.num_bodies,:].view(
             self.num_envs, self.num_bodies, -1
         )
         self.feet_state = self.rigid_body_states[:, self.feet_indices, :]
-
         self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1,
                                                                             3)  # shape: num_envs, num_bodies, xyz axis
 
@@ -1091,6 +1151,31 @@ class PointFoot:
             self.num_envs, dtype=torch.float, device=self.device, requires_grad=False
         )
 
+        if self.cfg.asset.load_object:
+            self.object_asset_list = []
+            self.object_size_list = []
+            for key, value in self.cfg.asset.object_files.items():
+                object_path = key.format(LEGGED_GYM_ROOT_DIR=LEGGED_GYM_ROOT_DIR)
+                object_root = os.path.dirname(object_path)
+                object_file = os.path.basename(object_path)  
+
+                object_options = gymapi.AssetOptions()
+                object_options.replace_cylinder_with_capsule = False
+                object_options.flip_visual_attachments = False
+                object_options.fix_base_link = False
+                object_options.density = 1000000.
+                object_options.angular_damping = 1000000.
+                object_options.linear_damping = 1000000.
+                object_options.max_angular_velocity = 0.001
+                object_options.max_linear_velocity = 0.001
+                object_options.armature = self.cfg.asset.armature
+                object_options.thickness = self.cfg.asset.thickness
+                object_options.disable_gravity = True
+                self.object_asset_list.append(self.gym.load_asset(self.sim, object_root, object_file, object_options))
+                self.object_size_list.append(value)
+
+        if self.cfg.asset.load_object:
+            self.object_handles = []
         self._get_env_origins()
         env_lower = gymapi.Vec3(0., 0., 0.)
         env_upper = gymapi.Vec3(0., 0., 0.)
@@ -1115,6 +1200,18 @@ class PointFoot:
             self.gym.set_actor_rigid_body_properties(env_handle, actor_handle, body_props, recomputeInertia=True)
             self.envs.append(env_handle)
             self.actor_handles.append(actor_handle)
+            #add object handle
+            if self.cfg.asset.load_object:
+                for _obj in range(self.cfg.asset.object_num):
+                    _obj_type = _obj % (len(self.object_asset_list))
+                    start_pose_obj = gymapi.Transform()
+                    pos_obj = torch.zeros((3,), device=self.device)
+                    pos_obj[:2] = -4. - _obj * 1.0
+                    pos_obj[2] = 0.5
+                    start_pose_obj.p = gymapi.Vec3(*pos_obj)
+                    object_handle = self.gym.create_actor(env_handle, self.object_asset_list[_obj_type], start_pose_obj, 'obstacle', i, 0, 1)
+                    self.object_handles.append(object_handle)
+
         #print(self.friction_coeffs)
         self.friction_coeffs_tensor = self.friction_coeffs.to(self.device).to(torch.float).squeeze(-1)
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
@@ -1141,6 +1238,15 @@ class PointFoot:
                                                                                         self.actor_handles[0],
                                                                                         termination_contact_names[i])
 
+    def _interpret_obj_state(self):
+        """_away, _static = self._interpret_obj_state()
+            for objects that can be away, static, or moving"""
+        self.away_ratio = 0.9 - 0.1 * self.terrain_levels.float().unsqueeze(1) # 0.9 to 0.0
+        self.static_ratio = (1 - self.away_ratio) * 1.0  # all of the left, no moving currently
+        away = (self.obj_state_rand < self.away_ratio)
+        static = torch.logical_and(self.obj_state_rand >= self.away_ratio, self.obj_state_rand < self.away_ratio + self.static_ratio)
+        return away, static
+    
     def _get_env_origins(self):
         """ Sets environment origins. On rough terrain the origins are defined by the terrain platforms.
             Otherwise create a grid.
