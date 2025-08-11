@@ -2,7 +2,7 @@ from legged_gym.envs.base.base_config import BaseConfig
 
 class PointFootRoughCfg(BaseConfig):
     class env:
-        num_envs = 4096
+        num_envs = 2048
         num_propriceptive_obs = 157
         num_privileged_obs = 184 # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
         #add p,d_gains(2*6) friction:1 mass&com:4 
