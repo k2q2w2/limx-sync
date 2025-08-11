@@ -29,7 +29,7 @@ class PointFoot:
         self.cfg = cfg
         self.sim_params = sim_params
         self.height_samples = None
-        self.debug_viz = True
+        self.debug_viz = False
         self.init_done = False
         self._parse_cfg()
         self.gym = gymapi.acquire_gym()
@@ -882,7 +882,6 @@ class PointFoot:
         self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
         self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
         self.base_quat = self.root_states[:, 3:7]
-        print(gymtorch.wrap_tensor(rigid_body_state).shape)
         self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_state)[0:self.num_envs*self.num_bodies,:].view(
             self.num_envs, self.num_bodies, -1
         )
