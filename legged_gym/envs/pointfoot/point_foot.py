@@ -8,7 +8,7 @@ from isaacgym.torch_utils import *
 
 from legged_gym import LEGGED_GYM_ROOT_DIR
 from legged_gym.utils.helpers import class_to_dict
-from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi
+from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi,yaw_quat
 from legged_gym.utils.terrain import Terrain
 
 
@@ -29,7 +29,7 @@ class PointFoot:
         self.cfg = cfg
         self.sim_params = sim_params
         self.height_samples = None
-        self.debug_viz = False
+        self.debug_viz = True
         self.init_done = False
         self._parse_cfg()
         self.gym = gymapi.acquire_gym()
@@ -186,10 +186,10 @@ class PointFoot:
         self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
         if self.cfg.terrain.measure_heights_actor or self.cfg.terrain.measure_heights_critic:
             self.measured_heights = self._get_heights()
+
+
         self._compute_feet_states()
-
-        self._post_physics_step_callback()
-
+        self._post_physics_step_callback()#bug
         # compute observations, rewards, resets, ...
         self.check_termination()
         self.compute_reward()
@@ -222,6 +222,8 @@ class PointFoot:
                                    dim=1)
         self.time_out_buf = self.episode_length_buf > self.max_episode_length  # no terminal reward for time-outs
         self.reset_buf |= self.time_out_buf
+        self.time_out_buf = (self.timer_left <= 0) # no terminal reward for time-outs
+        self.reset_buf |= self.time_out_buf
 
     def reset_idx(self, env_ids):
         """ Reset some environments.
@@ -245,12 +247,13 @@ class PointFoot:
         # reset robot states
         self._reset_dofs(env_ids)
         self._reset_root_states(env_ids)
-
         self._resample(env_ids)
 
         self._reset_buffers(env_ids)
         if self.cfg.asset.load_object:
             self.obj_state_rand[env_ids] = self.obj_state_rand[env_ids].uniform_(0., 1.)
+        # reset timer
+        self.timer_left[env_ids] = -self.cfg.domain_rand.randomize_timer_minus * torch.rand(len(env_ids), device=self.device) + self.cfg.env.episode_length_s
         # fill extras
         self.extras["episode"] = {}
         for key in self.episode_sums.keys():
@@ -528,17 +531,24 @@ class PointFoot:
         """ Callback called before computing terminations, rewards, and observations
             Default behaviour: Compute ang vel command based on target and heading, compute measured terrain heights and randomly push robots
         """
-        #
+        self.timer_left -= self.dt
+
+        pos_diff = self.position_targets - self.root_states[:, 0:3]
+        self.commands[:, :2] = quat_rotate_inverse(yaw_quat(self.base_quat[:]), pos_diff)[:, :2] # only x, y used here
+
+        forward = quat_apply(self.base_quat, self.forward_vec)
+        heading = torch.atan2(forward[:, 1], forward[:, 0])
+        self.commands[:, 2] = wrap_to_pi(self.heading_targets[:,0] - heading)
+
         env_ids = (self.episode_length_buf % int(self.cfg.commands.resampling_time / self.dt) == 0).nonzero(
             as_tuple=False).flatten()
-        self._resample(env_ids)
+        #self._resample(env_ids)
         self._resample_gaits(env_ids)
         self._step_contact_targets()
         if self.cfg.commands.heading_command:
             forward = quat_apply(self.base_quat, self.forward_vec)
             heading = torch.atan2(forward[:, 1], forward[:, 0])
             self.commands[:, 2] = torch.clip(0.5 * wrap_to_pi(self.commands[:, 3] - heading), -1., 1.)
-
         if self.cfg.domain_rand.push_robots and (self.common_step_counter % self.cfg.domain_rand.push_interval == 0):
             self._push_robots()
 
@@ -732,38 +742,25 @@ class PointFoot:
                 self.root_states_obj[_obj][env_ids, :2] += self.env_origins[env_ids,:2]
 
             env_ids_int32 = torch.cat([env_ids_int32 * (self.cfg.asset.object_num+1) + _actor for _actor in range(self.cfg.asset.object_num+1)], dim=0).to(dtype=torch.int32)
-        
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
                                                     gymtorch.unwrap_tensor(self.root_states_all),
                                                     gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
 
     def _push_robots(self):
         """Random pushes the robots."""
-        max_push_force = (
-                self.base_mass.mean().item()
-                * self.cfg.domain_rand.max_push_vel_xy
-                / self.sim_params.dt
-        )
-        self.rigid_body_external_forces[:] = 0
-        rigid_body_external_forces = torch_rand_float(
-            -max_push_force, max_push_force, (self.num_envs, 3), device=self.device
-        )
-        self.rigid_body_external_forces[:, 0, 0:3] = quat_rotate(
-            self.base_quat, rigid_body_external_forces
-        )
-        self.rigid_body_external_forces[:, 0, 2] *= 0.5
-
-        self.gym.apply_rigid_body_force_tensors(
-            self.sim,
-            gymtorch.unwrap_tensor(self.rigid_body_external_forces),
-            gymtorch.unwrap_tensor(self.rigid_body_external_torques),
-            gymapi.ENV_SPACE,
-        )
+        max_vel = self.cfg.domain_rand.max_push_vel_xy
+        self.root_states[:, 7:9] = self.root_states[:, 7:9] + torch_rand_float(-max_vel, max_vel, (self.num_envs, 2), device=self.device) # lin vel x/y
         if self.cfg.asset.load_object: 
             _away, _static = self._interpret_obj_state()
             for _obj in range(self.cfg.asset.object_num):
                 self.root_states_obj[_obj][:, 3:7] = self.base_init_state[3:7]
         self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(self.root_states_all))
+        # if self.cfg.asset.load_object: 
+        #     _away, _static = self._interpret_obj_state()
+        #     for _obj in range(self.cfg.asset.object_num):
+        #         self.root_states_obj[_obj][:, 3:7] = self.base_init_state[3:7]
+        
+        # self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(self.root_states_all))
 
     def _update_terrain_curriculum(self, env_ids):
         """ Implements the game-inspired curriculum.
@@ -775,12 +772,15 @@ class PointFoot:
         if not self.init_done:
             # don't change on initial reset
             return
-        distance = torch.norm(self.root_states[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)
-        # robots that walked far enough progress to harder terains
-        move_up = distance > self.terrain.env_length / 2
-        # robots that walked less than half of their required distance go to simpler terrains
-        move_down = (distance < torch.norm(self.commands[env_ids, :2],
-                                           dim=1) * self.max_episode_length_s * 0.5) * ~move_up
+        # distance = torch.norm(self.root_states[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)
+        # # robots that walked far enough progress to harder terains
+        # move_up = distance > self.terrain.env_length / 2
+        # # robots that walked less than half of their required distance go to simpler terrains
+        # move_down = (distance < torch.norm(self.commands[env_ids, :2],
+        #                                    dim=1) * self.max_episode_length_s * 0.5) * ~move_up
+        distance = torch.norm(self.root_states[env_ids, :2] - self.position_targets[env_ids, :2], dim=1)
+        move_up = distance < self.cfg.rewards.position_target_sigma_tight
+        move_down = distance > self.cfg.rewards.position_target_sigma_soft
         self.terrain_levels[env_ids] += 1 * move_up - 1 * move_down
         # Robots that solve the last level are sent to a random one
         self.terrain_levels[env_ids] = torch.where(self.terrain_levels[env_ids] >= self.max_terrain_level,
@@ -1019,6 +1019,11 @@ class PointFoot:
             device=self.device,
             requires_grad=False,
         )
+        self.position_targets = torch.zeros(self.num_envs, 3, dtype=torch.float, device=self.device, requires_grad=False)
+        self.heading_targets = torch.zeros(self.num_envs, 1, dtype=torch.float, device=self.device, requires_grad=False)
+        self.timer_left = torch.ones(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False) * self.cfg.env.episode_length_s
+        self.timer_left.uniform_(self.cfg.env.episode_length_s - self.cfg.domain_rand.randomize_timer_minus, self.cfg.env.episode_length_s)
+            
 
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
@@ -1308,6 +1313,19 @@ class PointFoot:
                 z = heights[j]
                 sphere_pose = gymapi.Transform(gymapi.Vec3(x, y, z), r=None)
                 gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i], sphere_pose)
+        sphere_geom1 = gymutil.WireframeSphereGeometry(0.1, 4, 4, None, color=(1, 0.2, 1))
+        sphere_geom2 = gymutil.WireframeSphereGeometry(0.06, 4, 4, None, color=(1, 0.2, 1))
+        for i in range(self.num_envs):
+            x = self.position_targets[i,0]
+            y = self.position_targets[i,1]
+            z = self.position_targets[i,2]
+            sphere_pose = gymapi.Transform(gymapi.Vec3(x, y, z), r=None)
+            gymutil.draw_lines(sphere_geom1, self.gym, self.viewer, self.envs[i], sphere_pose) 
+            x = self.position_targets[i,0] + 0.15*torch.cos(self.heading_targets[i])
+            y = self.position_targets[i,1] + 0.15*torch.sin(self.heading_targets[i])
+            z = self.position_targets[i,2]
+            sphere_pose = gymapi.Transform(gymapi.Vec3(x, y, z), r=None)
+            gymutil.draw_lines(sphere_geom2, self.gym, self.viewer, self.envs[i], sphere_pose) 
 
     def _init_height_points(self):
         """ Returns points at which the height measurments are sampled (in base frame)
@@ -1603,3 +1621,81 @@ class PointFoot:
     #         ),
     #         dim=1,
     #     )
+    ########pos reward
+    def _command_duration_mask(self, duration):
+        mask = self.timer_left <= duration 
+        return mask / duration
+    
+    def _reward_reach_pos_target_soft(self):
+        distance = torch.norm(self.position_targets[:, :2] - self.root_states[:, :2], dim=1)
+        return (1. /(1. + torch.square(distance / self.cfg.rewards.position_target_sigma_soft))) * self._command_duration_mask(self.cfg.rewards.rew_duration)
+
+    def _reward_reach_pos_target_tight(self):
+        distance = torch.norm(self.position_targets[:, :2] - self.root_states[:, :2], dim=1)
+        return (1. /(1. + torch.square(distance / self.cfg.rewards.position_target_sigma_tight))) * self._command_duration_mask(self.cfg.rewards.rew_duration/2)
+    
+    def _reward_reach_heading_target(self):
+        distance = torch.norm(self.position_targets[:, :2] - self.root_states[:, :2], dim=1)
+        near_goal = (distance < self.cfg.rewards.position_target_sigma_soft)
+        forward = quat_apply(self.base_quat, self.forward_vec)
+        heading_angle = torch.atan2(forward[:, 1], forward[:, 0])
+        angle_difference = torch.abs(wrap_to_pi(heading_angle - self.heading_targets[:,0]))
+        heading_rew = 1. /(1. + torch.square(angle_difference / self.cfg.rewards.heading_target_sigma))
+        return heading_rew * near_goal * self._command_duration_mask(self.cfg.rewards.rew_duration)  # feel the heading rew in advance
+
+    def _reward_reach_pos_target_times_heading(self):
+        # Compute distance between robot and target positions
+        distance = torch.norm(self.position_targets[:, :2] - self.root_states[:, :2], dim=1)
+        
+        # Compute heading angle of the robot
+        forward = quat_apply(self.base_quat, self.forward_vec)
+        heading_angle = torch.atan2(forward[:, 1], forward[:, 0])
+        
+        # Compute angle difference between heading and positive x-axis direction
+        angle_difference = torch.abs(wrap_to_pi(heading_angle - self.heading_targets[:,0]))  # 0 radians represents positive x-axis direction
+        
+        # Apply a penalty if the robot deviates from the positive x-axis direction
+        heading_penalty = torch.abs(torch.cos(angle_difference)) # avoid negative rewards
+        
+        # Compute the reward based on distance and heading penalty
+        distance_reward = (1. / (1. + torch.square(distance / self.cfg.rewards.position_target_sigma)))
+        
+        # Combine distance reward and heading penalty
+        combined_reward = distance_reward * heading_penalty * self._command_duration_mask(self.cfg.rewards.rew_duration)
+        return combined_reward
+
+
+    def _reward_velo_dir(self):
+        forward = quat_apply(self.base_quat, self.forward_vec)
+        xy_dif = self.position_targets[:,:2] - self.root_states[:, :2]
+        xy_dif = xy_dif / (0.001 + torch.norm(xy_dif, dim=1).unsqueeze(1))
+        good_dir = forward[:,0] * xy_dif[:,0] + forward[:,1] * xy_dif[:,1] > -0.25  # base orientation -> target
+        
+        distance = torch.norm(self.position_targets[:, :2] - self.root_states[:, :2], dim=1)
+        _rew = self.base_lin_vel[:,0].clip(min=0.0) * good_dir * (distance>self.cfg.rewards.position_target_sigma_tight) / 4.5 \
+                                            + 1.0 * (distance<self.cfg.rewards.position_target_sigma_tight)
+        return _rew
+
+    def _reward_stand_still_pos(self):
+        # Penalize motion at zero commands
+        distance = torch.norm(self.position_targets[:, :2] - self.root_states[:, :2], dim=1)
+        stand_bias = torch.zeros_like(self.dof_pos)
+        stand_bias[:,1::3] += 0.2
+        stand_bias[:,2::3] -= 0.3
+        return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos - stand_bias), dim=1) * self._command_duration_mask(self.cfg.rewards.rew_duration/2) \
+                                                                                             * (distance < self.cfg.rewards.position_target_sigma_tight)
+
+
+    def _reward_nomove(self):
+        # travel_dist = torch.norm(self.root_states[:, :2] - self.env_origins[:, :2], dim=1)
+        static = torch.logical_and(torch.norm(self.base_lin_vel[:,:2], dim=-1) < 0.1, torch.abs(self.base_ang_vel[:,2]) < 0.1)
+
+        forward = quat_apply(self.base_quat, self.forward_vec)
+        xy_dif = self.position_targets[:,:2] - self.root_states[:, :2]
+        xy_dif = xy_dif / (0.001 + torch.norm(xy_dif, dim=1).unsqueeze(1))
+        bad_dir = forward[:,0] * xy_dif[:,0] + forward[:,1] * xy_dif[:,1] < -0.25  # base orientation not -> target
+
+        distance = torch.norm(self.position_targets[:, :2] - self.root_states[:, :2], dim=1)
+
+        return static * bad_dir * 1.0 * (distance > self.cfg.rewards.position_target_sigma_soft)
+    

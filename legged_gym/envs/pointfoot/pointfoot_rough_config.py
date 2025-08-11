@@ -3,7 +3,7 @@ from legged_gym.envs.base.base_config import BaseConfig
 class PointFootRoughCfg(BaseConfig):
     class env:
         num_envs = 4096*2
-        num_propriceptive_obs = 27+2+4
+        num_propriceptive_obs = 157
         num_privileged_obs = 184 # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
         #add p,d_gains(2*6) friction:1 mass&com:4 
         num_actions = 6
@@ -34,7 +34,7 @@ class PointFootRoughCfg(BaseConfig):
         num_rows = 10  # number of terrain rows (levels)
         num_cols = 20  # number of terrain cols (types)
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
-        terrain_proportions = [0.1, 0.1, 0.35, 0.25, 0.2]
+        terrain_proportions = [0.3, 0.35, 0.0, 0.0, 0.35]
         # trimesh only:
         slope_treshold = 0.75  # slopes above this threshold will be corrected to vertical surfaces
 
@@ -132,7 +132,7 @@ class PointFootRoughCfg(BaseConfig):
         # '{LEGGED_GYM_ROOT_DIR}/resources/objects/OfficeChair/model.urdf': 0.4,
         '{LEGGED_GYM_ROOT_DIR}/resources/objects/cylindar.urdf': 0.4,
         }
-        object_num = 8
+        object_num = 4
         test_mode = False
         test_obj_pos = []
 
@@ -156,6 +156,8 @@ class PointFootRoughCfg(BaseConfig):
 
         randomize_lag_timesteps = True
         lag_timesteps = 3
+        #pos timer random
+        randomize_timer_minus = 2.0
 
 
     class gait:
@@ -193,6 +195,14 @@ class PointFootRoughCfg(BaseConfig):
             tracking_contacts_shaped_force = 2
             tracking_contacts_shaped_vel = 2
             single_contact = 1.0
+            #pos used
+            reach_pos_target_soft = 60.0
+            reach_pos_target_tight = 60.0
+            reach_heading_target = 30.0
+            reach_pos_target_times_heading = 0.0
+            velo_dir = 10.0
+            stand_still_pos = -10.0
+            nomove = -20.0
 
         base_height_target = 0.62
         soft_dof_pos_limit = 0.95  # percentage of urdf limits, values above this limit are penalized
@@ -208,6 +218,12 @@ class PointFootRoughCfg(BaseConfig):
         gait_force_sigma = 25.0
         gait_vel_sigma = 0.25
         gait_height_sigma = 0.005
+        #pos added
+        position_target_sigma_soft = 2.0
+        position_target_sigma_tight = 0.5
+        heading_target_sigma = 1.0
+        rew_duration = 2.0
+
 
     class normalization:
         class obs_scales:

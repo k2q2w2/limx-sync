@@ -54,3 +54,16 @@ def torch_rand_sqrt_float(lower, upper, shape, device):
     r = torch.where(r<0., -torch.sqrt(-r), torch.sqrt(r))
     r =  (r + 1.) / 2.
     return (upper - lower) * r + lower
+
+def yaw_quat(quat: torch.Tensor) -> torch.Tensor:
+    quat_yaw = quat.clone().view(-1, 4)
+    qx = quat_yaw[:, 0]
+    qy = quat_yaw[:, 1]
+    qz = quat_yaw[:, 2]
+    qw = quat_yaw[:, 3]
+    yaw = torch.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz))
+    quat_yaw[:, :2] = 0.0
+    quat_yaw[:, 2] = torch.sin(yaw / 2)
+    quat_yaw[:, 3] = torch.cos(yaw / 2)
+    quat_yaw = normalize(quat_yaw)
+    return quat_yaw
