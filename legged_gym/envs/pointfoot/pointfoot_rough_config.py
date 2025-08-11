@@ -2,9 +2,9 @@ from legged_gym.envs.base.base_config import BaseConfig
 
 class PointFootRoughCfg(BaseConfig):
     class env:
-        num_envs = 2048
-        num_propriceptive_obs = 157
-        num_privileged_obs = 184 # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
+        num_envs = 1024
+        num_propriceptive_obs = 117
+        num_privileged_obs = 144 # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
         #add p,d_gains(2*6) friction:1 mass&com:4 
         num_actions = 6
         env_spacing = 3.  # not used with heightfields/trimeshes
@@ -23,9 +23,9 @@ class PointFootRoughCfg(BaseConfig):
         # rough terrain only:
         measure_heights_actor = True
         measure_heights_critic = True
-        measured_points_x = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4,
-                             0.5]  # 1mx1m rectangle (without center line)
-        measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
+        measured_points_x = [ -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4
+                            ]  # 1mx1m rectangle (without center line)
+        measured_points_y = [ -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4]
         selected = False  # select a unique terrain type and pass all arguments
         terrain_kwargs = None  # Dict of arguments for selected terrain
         max_init_terrain_level = 5  # starting curriculum state
