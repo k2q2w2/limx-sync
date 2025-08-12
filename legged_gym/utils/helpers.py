@@ -180,7 +180,7 @@ def get_args():
 def export_policy_as_jit(actor_critic, path):
     if hasattr(actor_critic, 'memory_a'):
         # assumes LSTM: TODO add GRU
-        exporter = PolicyExporterLSTM(actor_critic)
+        exporter = PolicyExporterRNN(actor_critic)
         exporter.export(path)
     else: 
         os.makedirs(path, exist_ok=True)
@@ -214,6 +214,34 @@ class PolicyExporterLSTM(torch.nn.Module):
     def export(self, path):
         os.makedirs(path, exist_ok=True)
         path = os.path.join(path, 'policy_lstm_1.pt')
+        self.to('cpu')
+        traced_script_module = torch.jit.script(self)
+        traced_script_module.save(path)
+
+    
+class PolicyExporterRNN(torch.nn.Module):
+    def __init__(self, actor_critic):
+        super().__init__()
+        self.actor = copy.deepcopy(actor_critic.actor)
+        self.is_recurrent = actor_critic.is_recurrent
+        self.memory = copy.deepcopy(actor_critic.memory_a.rnn)
+        self.memory.cpu()
+        self.register_buffer(f'hidden_state', torch.zeros(self.memory.num_layers, 1, self.memory.hidden_size))
+        #self.register_buffer(f'cell_state', torch.zeros(self.memory.num_layers, 1, self.memory.hidden_size))
+
+    def forward(self, x):
+        out, h = self.memory(x.unsqueeze(0), self.hidden_state)
+        self.hidden_state[:] = h
+        out = out.squeeze(0)
+        return self.actor(out)
+
+    @torch.jit.export
+    def reset_memory(self):
+        self.hidden_state[:] = 0.
+ 
+    def export(self, path):
+        os.makedirs(path, exist_ok=True)
+        path = os.path.join(path, 'policy_rnn_1.pt')
         self.to('cpu')
         traced_script_module = torch.jit.script(self)
         traced_script_module.save(path)

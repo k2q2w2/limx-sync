@@ -28,20 +28,49 @@ def export_policy_as_onnx(args):
     path = os.path.join(path, "policy.onnx")
     model = copy.deepcopy(actor_critic.actor).to("cpu")
     model.eval()
+    class rnn_export(torch.nn.Module):
+        def __init__(self, actor_critic):
+            super().__init__()
+            self.actor = copy.deepcopy(actor_critic.actor)
+            self.is_recurrent = actor_critic.is_recurrent
+            self.memory = copy.deepcopy(actor_critic.memory_a.rnn)
+            self.memory.cpu()
+            self.register_buffer(f'hidden_state', torch.zeros(self.memory.num_layers, 1, self.memory.hidden_size))
+        #self.register_buffer(f'cell_state', torch.zeros(self.memory.num_layers, 1, self.memory.hidden_size))
 
+        def forward(self, x_in, h_in):
+            x, h = self.memory(x_in.unsqueeze(0), h_in)
+            x = x.squeeze(0)
+            return self.actor(x), h
+    
+        @torch.jit.export
+        def reset_memory(self):
+            self.hidden_state[:] = 0.
+ 
+        def export(self, path):
+            os.makedirs(path, exist_ok=True)
+            path = os.path.join(path, 'policy_rnn_1.pt')
+            self.to('cpu')
+            traced_script_module = torch.jit.script(self)
+            traced_script_module.save(path)
+
+    model2 = rnn_export(actor_critic)
+    model2.eval()
+    model2.to("cpu")
     dummy_input = torch.randn(env_cfg.env.num_propriceptive_obs)
-    input_names = ["nn_input"]
-    output_names = ["nn_output"]
+    dummy_input2 = torch.randn(1,512)
+    input_names = ["nn_input0","nn_input1"]
+    output_names = ["nn_output0","nn_output1"]
 
     torch.onnx.export(
-        model,
-        dummy_input,
+        model2,
+        (dummy_input,dummy_input2),
         path,
         verbose=True,
         input_names=input_names,
         output_names=output_names,
         export_params=True,
-        opset_version=13,
+        opset_version=11,
     )
     print("Exported policy as onnx script to: ", path)
 
