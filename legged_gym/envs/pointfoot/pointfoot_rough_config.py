@@ -179,8 +179,8 @@ class PointFootRoughCfg(BaseConfig):
             keep_balance = 1.0
             #action_smooth = -0.01
             #feet_height = -0.1
-            tracking_contacts_shaped_force = -2.0
-            tracking_contacts_shaped_vel = -2.0
+            tracking_contacts_shaped_force = 0.0
+            tracking_contacts_shaped_vel = 0.0
             single_contact = 0
 
         base_height_target = 0.62
@@ -290,5 +290,5 @@ class PointFootRoughCfgPPO(BaseConfig):
         # load and resume
         resume = False
         load_run = -1 # -1 = last run
-        checkpoint = -1  # -1 = last saved model
+        checkpoint = "0816pf"  # -1 = last saved model
         resume_path = "model_4000.pt"  # updated from load_run and chkpt
