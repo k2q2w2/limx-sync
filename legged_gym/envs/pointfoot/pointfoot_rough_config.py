@@ -47,7 +47,7 @@ class PointFootRoughCfg(BaseConfig):
 
         class ranges:
             lin_vel_x = [-1.0, 1.0]  # min max [m/s]
-            lin_vel_y = [-0.6, 0.6]  # min max [m/s]
+            lin_vel_y = [-0.0, 0.0]  # min max [m/s]
             ang_vel_yaw = [-1, 1]  # min max [rad/s]
             heading = [-3.14, 3.14]
 
@@ -59,11 +59,11 @@ class PointFootRoughCfg(BaseConfig):
         default_joint_angles = {  # target angles when action = 0.0
             "abad_L_Joint": 0.0,
             "hip_L_Joint": 0.0,
-            "knee_L_Joint": 0.0,
+            "knee_L_Joint": 0,
             "foot_L_Joint": 0.0,
             "abad_R_Joint": 0.0,
-            "hip_R_Joint": 0.0,
-            "knee_R_Joint": 0.0,
+            "hip_R_Joint": -0.0,
+            "knee_R_Joint": -0.0,
             "foot_R_Joint": 0.0,
         }
 
@@ -181,7 +181,7 @@ class PointFootRoughCfg(BaseConfig):
             #feet_height = -0.1
             tracking_contacts_shaped_force = -2.0
             tracking_contacts_shaped_vel = -2.0
-            single_contact = 1.0
+            single_contact = 0
 
         base_height_target = 0.62
         soft_dof_pos_limit = 0.95  # percentage of urdf limits, values above this limit are penalized
