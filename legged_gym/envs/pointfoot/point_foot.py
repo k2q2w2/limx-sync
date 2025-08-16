@@ -597,16 +597,16 @@ class PointFoot:
             ),
             1.0,
         )
-        stance_idxs = foot_indices < durations
-        swing_idxs = foot_indices > durations
+        # stance_idxs = foot_indices < durations
+        # swing_idxs = foot_indices >= durations
 
         # 感觉这两句可以不要
-        foot_indices[stance_idxs] = torch.remainder(foot_indices[stance_idxs], 1) * (
-                0.5 / durations[stance_idxs]
-        )
-        foot_indices[swing_idxs] = 0.5 + (
-                torch.remainder(foot_indices[swing_idxs], 1) - durations[swing_idxs]
-        ) * (0.5 / (1 - durations[swing_idxs]))
+        # foot_indices[stance_idxs] = torch.remainder(foot_indices[stance_idxs], 1) * (
+        #         0.5 / durations[stance_idxs]
+        # )
+        # foot_indices[swing_idxs] = 0.5 + (
+        #         torch.remainder(foot_indices[swing_idxs], 1) - durations[swing_idxs]
+        # ) * (0.5 / (1 - durations[swing_idxs]))
 
         # 就是为了拟合论文中的曲线，也可以用更正常的方法
         self.desired_contact_states = smoothing_cdf_start(foot_indices) * (
@@ -614,6 +614,7 @@ class PointFoot:
         ) + smoothing_cdf_start(foot_indices - 1) * (
                                               1 - smoothing_cdf_start(foot_indices - 1.5)
                                       )
+        #print(self.desired_contact_states)
 
     def _compute_torques(self, actions):
         """ Compute torques from actions.
