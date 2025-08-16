@@ -50,9 +50,9 @@ class PointFootRoughCfg(BaseConfig):
         heading_command = True  # if true: compute ang vel command from heading error
 
         class ranges:
-            lin_vel_x = [-1.0, 1.0]  # min max [m/s]
+            lin_vel_x = [-0.0, 0.0]  # min max [m/s]
             lin_vel_y = [-0.0, 0.0]  # min max [m/s]
-            ang_vel_yaw = [-1, 1]  # min max [rad/s]
+            ang_vel_yaw = [-0, 0]  # min max [rad/s]
             heading = [-3.14, 3.14]
 
     class init_state:
@@ -173,17 +173,17 @@ class PointFootRoughCfg(BaseConfig):
             torque_limits = -0.1
             torques = -2.5e-05
             feet_distance = -65
-            survival = 1.0
-            tracking_lin_vel =0
-            tracking_ang_vel =0
+            survival = 5.0
+            tracking_lin_vel =4.0
+            tracking_ang_vel =4.0
             tracking_lin_vel_pb = 0
             tracking_ang_vel_pb = 0
             orientation =-4.0
-            keep_balance = 0.0
+            keep_balance = 1.0
             #action_smooth = -0.01
             #feet_height = -0.1
-            tracking_contacts_shaped_force = -2.0
-            tracking_contacts_shaped_vel = -2.0
+            tracking_contacts_shaped_force = -8.0
+            tracking_contacts_shaped_vel = -8.0
             single_contact = 0
 
         base_height_target = 0.62
