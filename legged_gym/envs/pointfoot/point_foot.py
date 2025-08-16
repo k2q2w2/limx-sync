@@ -657,7 +657,7 @@ class PointFoot:
         Args:
             env_ids (List[int]): Environment ids
         """
-        self.dof_pos[env_ids] = self.default_dof_pos * torch_rand_float(0.5, 1.5, (len(env_ids), self.num_dof),
+        self.dof_pos[env_ids] = self.default_dof_pos + torch_rand_float(-0.5, 0.5, (len(env_ids), self.num_dof),
                                                                         device=self.device)
         self.dof_vel[env_ids] = 0.
 

@@ -62,8 +62,6 @@ class Terrain:
             self.curiculum()
         elif cfg.selected:
             self.selected_terrain()
-        else:    
-            self.randomized_terrain()   
         
         self.heightsamples = self.height_field_raw
         if self.type=="trimesh":
@@ -185,3 +183,6 @@ def pit_terrain(terrain, depth, platform_size=1.):
     y1 = terrain.width // 2 - platform_size
     y2 = terrain.width // 2 + platform_size
     terrain.height_field_raw[x1:x2, y1:y2] = -depth
+
+def plane_terrain(terrain):
+    terrain.height_fiedl_raw[:,:]=0

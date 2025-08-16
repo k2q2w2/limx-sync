@@ -2,7 +2,7 @@ from legged_gym.envs.base.base_config import BaseConfig
 
 class PointFootRoughCfg(BaseConfig):
     class env:
-        num_envs = 4096*2
+        num_envs = 4096
         num_propriceptive_obs = 27+2+4
         num_privileged_obs = 184 # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
         #add p,d_gains(2*6) friction:1 mass&com:4 
@@ -11,16 +11,20 @@ class PointFootRoughCfg(BaseConfig):
         send_timeouts = True  # send time out information to the algorithm
         episode_length_s = 20  # episode length in seconds
 
+
     class terrain:
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
         horizontal_scale = 0.1  # [m]
         vertical_scale = 0.005  # [m]
         border_size = 25  # [m]
-        curriculum = True
+        curriculum = False
+        selected = True 
         static_friction = 0.4
         dynamic_friction = 0.6
         restitution = 0.8
+
         # rough terrain only:
+        terrain_kwargs ={"type":"plane_terrain"}
         measure_heights_actor = False
         measure_heights_critic = True
         measured_points_x = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4,
@@ -52,18 +56,18 @@ class PointFootRoughCfg(BaseConfig):
             heading = [-3.14, 3.14]
 
     class init_state:
-        pos = [0.0, 0.0, 0.62]  # x,y,z [m]
-        rot = [0.0, 0.0, 0.0, 1.0]  # x,y,z,w [quat]
+        pos = [0.0, 0.0, 0.32]  # x,y,z [m]
+        rot = [ 0, -0.4871745, 0, -0.8733046 ]  # x,y,z,w [quat]
         lin_vel = [0.0, 0.0, 0.0]  # x,y,z [m/s]
         ang_vel = [0.0, 0.0, 0.0]  # x,y,z [rad/s]
         default_joint_angles = {  # target angles when action = 0.0
             "abad_L_Joint": 0.0,
-            "hip_L_Joint": 0.0,
-            "knee_L_Joint": 0,
+            "hip_L_Joint": -0.5,
+            "knee_L_Joint": 1.4,
             "foot_L_Joint": 0.0,
             "abad_R_Joint": 0.0,
-            "hip_R_Joint": -0.0,
-            "knee_R_Joint": -0.0,
+            "hip_R_Joint": 0.5,
+            "knee_R_Joint": -1.4,
             "foot_R_Joint": 0.0,
         }
 
@@ -108,7 +112,7 @@ class PointFootRoughCfg(BaseConfig):
         name = robot_type
         foot_name = 'foot'
         terminate_after_contacts_on = ["abad", "base"]
-        penalize_contacts_on = ["base", "abad", "hip", "knee"]
+        penalize_contacts_on = ["base", "abad"]
         disable_gravity = False
         collapse_fixed_joints = True  # merge bodies connected by fixed joints. Specific fixed joints can be kept by adding " <... dont_collapse="true">
         fix_base_link = False  # fixe the base of the robot
@@ -161,7 +165,7 @@ class PointFootRoughCfg(BaseConfig):
     class rewards:
         class scales:
             action_rate = -0.01
-            ang_vel_xy = -0.05
+            ang_vel_xy = 0
             base_height = -2.0
             collision = -50.0
             dof_acc = -2.5e-07
@@ -170,13 +174,12 @@ class PointFootRoughCfg(BaseConfig):
             torques = -2.5e-05
             feet_distance = -65
             survival = 1.0
-            tracking_lin_vel =5.0
-            tracking_ang_vel =2.5
-            tracking_lin_vel_pb = 1.0
-            tracking_ang_vel_pb = 0.2
-            base_height=-0.25
+            tracking_lin_vel =0
+            tracking_ang_vel =0
+            tracking_lin_vel_pb = 0
+            tracking_ang_vel_pb = 0
             orientation =-4.0
-            keep_balance = 1.0
+            keep_balance = 0.0
             #action_smooth = -0.01
             #feet_height = -0.1
             tracking_contacts_shaped_force = -2.0
@@ -258,9 +261,9 @@ class PointFootRoughCfgPPO(BaseConfig):
         critic_hidden_dims = [512, 256, 128]
         activation = 'elu'  # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
         # only for 'ActorCriticRecurrent':
-        rnn_type = 'gru'
-        rnn_hidden_size = 512
-        rnn_num_layers = 1
+        # rnn_type = 'gru'
+        # rnn_hidden_size = 512
+        # rnn_num_layers = 1
 
     class algorithm:
         # training params
@@ -278,10 +281,10 @@ class PointFootRoughCfgPPO(BaseConfig):
         max_grad_norm = 0.01
 
     class runner:
-        policy_class_name = 'ActorCriticRecurrent'
+        policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
-        num_steps_per_env = 48  # per iteration
-        max_iterations = 10000  # number of policy updates
+        num_steps_per_env = 24  # per iteration
+        max_iterations = 5000  # number of policy updates
 
         # logging
         save_interval = 1000  # check for potential saves every this many iterations
