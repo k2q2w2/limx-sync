@@ -29,7 +29,7 @@ class PointFoot:
         self.cfg = cfg
         self.sim_params = sim_params
         self.height_samples = None
-        self.debug_viz = False
+        self.debug_viz = True
         self.init_done = False
         self._parse_cfg()
         self.gym = gymapi.acquire_gym()
@@ -945,6 +945,7 @@ class PointFoot:
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+        self.reach_target_buffer = torch.ones(self.num_envs,requires_grad=False,device=self.device)
         if self.cfg.terrain.measure_heights_actor or self.cfg.terrain.measure_heights_critic:
             self.height_points = self._init_height_points()
         self.measured_heights = 0
@@ -1214,7 +1215,7 @@ class PointFoot:
                     pos_obj[:2] = -4. - _obj * 1.0
                     pos_obj[2] = 0.5
                     start_pose_obj.p = gymapi.Vec3(*pos_obj)
-                    object_handle = self.gym.create_actor(env_handle, self.object_asset_list[_obj_type], start_pose_obj, 'obstacle', i, 0, 1)
+                    object_handle = self.gym.create_actor(env_handle, self.object_asset_list[_obj_type], start_pose_obj, 'obstacle', -1, 0, 1)
                     self.object_handles.append(object_handle)
 
         #print(self.friction_coeffs)

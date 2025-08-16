@@ -45,6 +45,6 @@ if 1:
     task_registry.register("pointfoot_rough", PointFoot, PointFootRoughCfg(), PointFootRoughCfgPPO())
     print("registry env success!")
 else:
-    print("Error: Unknown robot type", robot_type)
+    print("Error: Unknown robot type", )
     sys.exit(1)
    

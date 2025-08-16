@@ -29,8 +29,8 @@ class PointFootRoughCfg(BaseConfig):
         selected = False  # select a unique terrain type and pass all arguments
         terrain_kwargs = None  # Dict of arguments for selected terrain
         max_init_terrain_level = 5  # starting curriculum state
-        terrain_length = 8.
-        terrain_width = 8.
+        terrain_length = 16.
+        terrain_width = 16.
         num_rows = 10  # number of terrain rows (levels)
         num_cols = 20  # number of terrain cols (types)
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
@@ -132,7 +132,7 @@ class PointFootRoughCfg(BaseConfig):
         # '{LEGGED_GYM_ROOT_DIR}/resources/objects/OfficeChair/model.urdf': 0.4,
         '{LEGGED_GYM_ROOT_DIR}/resources/objects/cylindar.urdf': 0.4,
         }
-        object_num = 4
+        object_num = 8
         test_mode = False
         test_obj_pos = []
 
